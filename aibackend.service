@@ -1,0 +1,14 @@
+Description=AI Backend
+After=network.target
+
+[Service]
+Type=forking
+Restart=always
+RestartSec=5
+User=legekka
+ExecStart=/opt/bots/ai-backend/aibackend_service.sh
+RemainAfterExit=false
+SuccessExitStatus=1
+
+[Install]
+WantedBy=default.target
