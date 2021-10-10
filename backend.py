@@ -88,14 +88,14 @@ device = torch.device('cpu')
 # loading model from saved files
 print('Loading models...')
 taggernn = Resnext50(989)
-taggernn.load_state_dict(torch.load('models/TaggerNN4S.pth'))
+taggernn.load_state_dict(torch.load('models/TaggerNN4S.pth', map_location=device))
 taggernn.to(device)
 taggernn.eval()
 print('TaggerNN4S loaded.')
 
 print('Loading TaggerNN4S(-2) for Rater')
 tagger = Resnext50(989) # 989 classes
-tagger.load_state_dict(torch.load('models/TaggerNN4S.pth'))
+tagger.load_state_dict(torch.load('models/TaggerNN4S.pth', map_location=device))
 tagger.eval()
 tagger.to(device)
 modules = list(list(tagger.children())[0].children())[:-1]
@@ -106,7 +106,7 @@ tagger = nn.Sequential(*modules)
 for user in users:
     print('Loading RaterNN for user: ' + user)
     model = Rater()
-    model.load_state_dict(torch.load('models/' + user + '.pth'))
+    model.load_state_dict(torch.load('models/' + user + '.pth', map_location=device))
     model.to(device)
     model.eval()
     ratermodels.append(model)
