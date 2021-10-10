@@ -82,7 +82,7 @@ val_transform = transforms.Compose([
     transforms.Normalize(mean, std)
 ])
 
-device = torch.device('cuda:1')
+device = torch.device('cpu')
 # use cuda device 1
 
 # loading model from saved files
