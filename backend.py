@@ -212,7 +212,7 @@ def updatemodel():
         return jsonify({'error': 'User not found'})
     # get index of user in users
     index = users.index(user)
-    ratermodels[index].load_state_dict(torch.load(modelfile))
+    ratermodels[index].load_state_dict(torch.load(modelfile, map_location=device))
     # save modelfile into the models folder
     torch.save(ratermodels[index].state_dict(), 'models/' + user + '.pth')
     print('Model for user ' + user + ' updated.')
