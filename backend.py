@@ -203,7 +203,7 @@ def ratebulk():
 @app.route('/updatemodel', methods=['POST'])
 def updatemodel():
     modelfile = request.files.get('pth')
-    if (not modelfile.endswith('.pth')):
+    if (not modelfile.filename.endswith('.pth')):
         return jsonify({'error': 'Invalid file type'})
 
     user = request.form.get('user')
