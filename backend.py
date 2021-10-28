@@ -82,7 +82,7 @@ val_transform = transforms.Compose([
     transforms.Normalize(mean, std)
 ])
 
-device = torch.device('cpu')
+device = torch.device('cuda')
 # use cuda device 1
 
 # loading model from saved files
@@ -191,13 +191,27 @@ def rate():
 def ratebulk():
     images = request.files.getlist('images')
     user = request.form.get('user')
-    if user not in users:
-        print('User ' + user + ' not found!')
-        return jsonify({'error': 'User not found'})
     ratings = []
-    for image in images:
-        rating = rateImage(image, user)
-        ratings.append(rating)
+    if (user == 'all'):
+        for image in images:
+            rating = rateImage_all(image)
+            # map users to ratings
+            ratings.append(rating)
+        response = {
+            'ratings': ratings,
+            'users': users
+        }
+        return jsonify({
+            'ratings': ratings,
+            'users': users
+        })
+    else:
+        if user not in users:
+            print('User ' + user + ' not found!')
+            return jsonify({'error': 'User not found'})
+        for image in images:
+            rating = rateImage(image, user)
+            ratings.append(rating)
     return jsonify({'ratings': ratings})
 
 @app.route('/updatemodel', methods=['POST'])
