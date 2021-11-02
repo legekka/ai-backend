@@ -1,0 +1,7 @@
+{
+    "name": "GTX 1080",
+    "ip": "localhost",
+    "port": "2501",
+    "quality": 60,
+    "device": "cuda:0"
+}

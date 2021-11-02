@@ -1,0 +1,7 @@
+{
+    "name": "Tesla K80",
+    "ip": "localhost",
+    "port": "2503",
+    "quality": 20,
+    "device": "cuda:2"
+}

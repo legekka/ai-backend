@@ -1,38 +1,32 @@
-# RaterNN part
 import os
 import time
 import numpy as np
 from PIL import Image
-from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from torchvision import models
 import torch
 from torch import nn
 import json
+import argparse
 
-# load users.json
-with open("models/users.json") as f:
-    users = json.load(f)
-n_classes = len(users)
-with open("models/tags.json") as f:
-    classes = json.load(f)["labels"]
+# load config from process argument
+parser = argparse.ArgumentParser()
+parser.add_argument("--config", type=str, default="config.json")
+args = parser.parse_args()
+
+if not os.path.exists(args.config):
+    print("Config file not found!")
+    exit()
+
+config = json.load(open(args.config))
+
+device = config["device"]
 
 ratermodels = []
 
-
-class Resnext101(nn.Module):
-    def __init__(self, n_classes):
-        super().__init__()
-        resnet = models.resnext101_32x8d(pretrained=False)
-        resnet.fc = nn.Sequential(
-            nn.Dropout(p=0.2),
-            nn.Linear(in_features=resnet.fc.in_features, out_features=n_classes),
-        )
-        self.base_model = resnet
-        self.sigm = nn.Sigmoid()
-
-    def forward(self, x):
-        return self.sigm(self.base_model(x))
+# load users.json and classes.json
+users = json.load(open("models/users.json"))
+classes = json.load(open("models/tags.json"))["labels"]
 
 
 class Resnext50(nn.Module):
@@ -84,34 +78,32 @@ val_transform = transforms.Compose(
     ]
 )
 
-device = torch.device("cuda")
+torch.device(device)
 
-# loading model from saved files
 print("Loading models...")
 taggernn = Resnext50(989)
 taggernn.load_state_dict(torch.load("models/TaggerNN4S.pth", map_location=device))
 taggernn.to(device)
 taggernn.eval()
-print("TaggerNN4S loaded.")
+print("TaggerNN4S loaded!")
 
-print("Loading TaggerNN4S(-2) for Rater")
-tagger = Resnext50(989)  # 989 classes
+print("Loading TaggerNN4S(-2) for RaterNN")
+tagger = Resnext50(989)
 tagger.load_state_dict(torch.load("models/TaggerNN4S.pth", map_location=device))
-tagger.eval()
 tagger.to(device)
+tagger.eval()
 modules = list(list(tagger.children())[0].children())[:-1]
 tagger = nn.Sequential(*modules)
+print("TaggerNN4S(-2) loaded!")
 
-
-# load models
 for user in users:
-    print("Loading RaterNN for user: " + user)
+    print(f"Loading RaterNN for user {user}")
     model = Rater()
-    model.load_state_dict(torch.load("models/" + user + ".pth", map_location=device))
+    model.load_state_dict(torch.load(f"models/{user}.pth", map_location=device))
     model.to(device)
     model.eval()
     ratermodels.append(model)
-    print("Model for user " + user + " loaded.")
+    print(f"RaterNN for user {user} loaded!")
 
 print("All models loaded!")
 
@@ -134,102 +126,86 @@ def tagImage(image):
     return confidences, labels
 
 
-def rateImage(image, username):
+def rateImage(image, user):
     img = Image.open(image)
     img = val_transform(img)
     img = img.unsqueeze(0)
     img = img.to(device)
 
     with torch.no_grad():
-        prediction = float(ratermodels[users.index(username)](img).cpu().numpy()[0][0])
-    return prediction
+        rating = float(ratermodels[users.index(user)](img).cpu().numpy()[0][0])
+    return rating
 
 
-def rateImage_all(image):
+def rateImageAll(image):
     img = Image.open(image)
     img = val_transform(img)
     img = img.unsqueeze(0)
     img = img.to(device)
     with torch.no_grad():
-        predictions = []
+        ratings = []
         for model in ratermodels:
-            prediction = float(model(img).cpu().numpy()[0][0])
-            predictions.append(prediction)
-    return predictions
+            ratings.append(float(model(img).cpu().numpy()[0][0]))
+    return ratings
+
+
+# Worker client part
+import requests
+
+
+def registerWorker():
+    print("Registering worker...")
+    url = "http://localhost:2444/registerworker"
+    data = config
+    response = requests.post(url, json=data)
+    print(response.text)
 
 
 # Web server part
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-# configure port to 8765
-app = Flask("rater")
+app = Flask("worker")
 CORS(app)
 
 
 @app.route("/tag", methods=["POST"])
 def tag():
-    image = request.files.get("image")
+    image = request.files["image"]
     confidences, labels = tagImage(image)
-    return jsonify({"labels": labels, "confidences": confidences})
+    return jsonify({"confidences": confidences, "labels": labels})
 
 
 @app.route("/rate", methods=["POST"])
 def rate():
-    image = request.files.get("image")
-    user = request.form.get("user")
-    print(user)
+    image = request.files["image"]
+    user = request.form["user"]
     if user == "all":
-        rating = rateImage_all(image)
-        print(rating)
+        ratings = rateImageAll(image)
+        return jsonify({"rating": ratings})
     else:
-        if user not in users:
-            print("User " + user + " not found!")
-            return jsonify({"error": "User not found"})
         rating = rateImage(image, user)
-        print("Rating for user " + user + ": " + str(rating))
-    return jsonify({"rating": rating})
+        return jsonify({"rating": rating})
 
 
 @app.route("/ratebulk", methods=["POST"])
 def ratebulk():
     images = request.files.getlist("images")
-    user = request.form.get("user")
+    user = request.form["user"]
+    print(f"RateBulk {len(images)} images for {user}")
     ratings = []
     if user == "all":
         for image in images:
-            rating = rateImage_all(image)
-            ratings.append(rating)
+            ratings.append(rateImageAll(image))
         return jsonify({"ratings": ratings, "users": users})
     else:
-        if user not in users:
-            print("User " + user + " not found!")
-            return jsonify({"error": "User not found"})
         for image in images:
-            rating = rateImage(image, user)
-            ratings.append(rating)
-    return jsonify({"ratings": ratings})
-
-
-@app.route("/updatemodel", methods=["POST"])
-def updatemodel():
-    modelfile = request.files.get("pth")
-    if not modelfile.filename.endswith(".pth"):
-        return jsonify({"error": "Invalid file type"})
-
-    user = request.form.get("user")
-    if user not in users:
-        print("User " + user + " not found!")
-        return jsonify({"error": "User not found"})
-    # get index of user in users
-    index = users.index(user)
-    ratermodels[index].load_state_dict(torch.load(modelfile, map_location=device))
-    # save modelfile into the models folder
-    torch.save(ratermodels[index].state_dict(), "models/" + user + ".pth")
-    print("Model for user " + user + " updated.")
-    return jsonify({"success": "Model updated"})
+            ratings.append(rateImage(image, user))
+        return jsonify({"ratings": ratings})
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port="2444")
+    registerWorker()
+    from waitress import serve
 
+    serve(app, host="0.0.0.0", port=config["port"])
