@@ -182,7 +182,7 @@ def rate():
     user = request.form["user"]
     if user == "all":
         ratings = rateImageAll(image)
-        return jsonify({"rating": ratings})
+        return jsonify({"rating": ratings, "users": users})
     else:
         rating = rateImage(image, user)
         return jsonify({"rating": rating})

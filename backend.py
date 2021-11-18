@@ -182,6 +182,7 @@ def rate():
     if user == "all":
         rating = rateImage_all(image)
         print(rating)
+        return jsonify({"rating": rating, "users": users})
     else:
         if user not in users:
             print("User " + user + " not found!")
