@@ -18,7 +18,7 @@ from tqdm import tqdm
 import random
 import asyncio
 
-cudadevice = "cuda"
+cudadevice = "cuda:0"
 
 # load users.json
 with open("models/users.json") as f:
@@ -274,8 +274,7 @@ def createTrainDataFiles(data):
 
 async def trainAllUser():
     for i, user in enumerate(users):
-        print("Training RaterNN for user " + user + +
-              " " + (i + 1) + "/" + str(len(users)))
+        print("Training RaterNN for user " + user + " " + str(i + 1) + "/" + str(len(users)))
         await trainUser(user)
     return
 
@@ -304,7 +303,7 @@ async def trainUser(username):
             imgs, targets = imgs.to(device), targets.to(device)
             optimizer.zero_grad()
 
-            model_result = model(imgs)
+            model_result = model(imgs).squeeze(1)
             loss = criterion(model_result, targets.type(torch.float))
             batch_loss_value = loss.item()
             loss.backward()
@@ -323,6 +322,10 @@ async def trainUser(username):
     ratermodels[index].load_state_dict(model.state_dict())
     print("Model updated!")
     current_training_status["is_training"] = False
+    # clear up gpu memory
+    del model
+    torch.cuda.empty_cache()
+    return
 
 
 @app.route("/training/status", methods=["GET"])
@@ -421,7 +424,7 @@ current_training_status = {
 }
 
 # Initialize the training parameters.
-num_workers = 8  # Number of CPU processes for data preprocessing
+num_workers = 4  # Number of CPU processes for data preprocessing
 lr = 1e-4 * 3  # Learning rate
 batch_size = 32  # Batch size
 max_epoch_number = 20  # Max epoch number
@@ -429,6 +432,4 @@ max_epoch_number = 20  # Max epoch number
 device = torch.device(cudadevice)
 
 
-# if __name__ == "__main__":
-#    app.run(host="0.0.0.0", port="2444")
 app.run(host="0.0.0.0", port="2444")
