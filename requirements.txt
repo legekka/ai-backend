@@ -1,3 +1,6 @@
 tqdm
 flask
 flask-cors
+torch
+torchvision
+asyncio
