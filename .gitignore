@@ -1,3 +1,5 @@
 models/*.pth
+models/*.pt
 images/*
 training/*
+*.sh
