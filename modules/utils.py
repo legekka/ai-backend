@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from PIL import Image
 from torchvision import transforms
-from modules.models import *
+from modules.models import RaterNN, EfficientNetV2S
 
 
 mean = [0.485, 0.456, 0.406]
@@ -40,7 +40,7 @@ def get_val_transforms():
     return val_transforms
 
 def load_checkpoint(model, path, device='cpu'):
-    checkpoint_dict = torch.load(path)
+    checkpoint_dict = torch.load(path, map_location=device)
     model.load_state_dict(checkpoint_dict['model'])
     model.to(device)
     return model
@@ -61,18 +61,19 @@ def load_configs():
 
 
 
-def load_models(config, device="cpu"):
+def load_models(config, device):
     import os
-
+    if device is None:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Loading T11...", end="", flush=True)
-    T11 = EfficientNetV2S(classes=config["T11"]["tags"])
+    T11 = EfficientNetV2S(classes=config["T11"]["tags"], device=device)
     T11 = load_checkpoint(
         T11, os.path.join("models", config["T11"]["checkpoint_path"]), device=device
     )
     T11.eval()
     print("Done!")
 
-    T11_rater = EfficientNetV2S(classes=config["T11"]["tags"])
+    T11_rater = EfficientNetV2S(classes=config["T11"]["tags"], device=device)
     T11_rater = load_checkpoint(
         T11_rater,
         os.path.join("models", config["T11"]["checkpoint_path"]),
@@ -80,7 +81,7 @@ def load_models(config, device="cpu"):
     )
     T11_rater.eval()
     print("Loading Rater...", end="", flush=True)
-    rater = RaterNN(T11_rater, usernames=config["rater"]["usernames"])
+    rater = RaterNN(T11_rater, usernames=config["rater"]["usernames"], device=device)
     rater.rater = load_checkpoint(
         rater.rater,
         os.path.join("models", config["rater"]["checkpoint_path"]),

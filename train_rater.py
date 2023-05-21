@@ -2,7 +2,7 @@ import json
 import torch
 from modules.models import *
 from modules.utils import *
-from modules.training_utils import *
+from modules.raterdataset import *
 import os
 from torch.utils.data import DataLoader
 import tqdm
@@ -55,11 +55,9 @@ def main():
 
     # load the dataset
     print("Loading dataset...", flush=True, end="")
-    with open("rater/train.json") as f:
-        train_data = json.load(f)
 
     train_dataset = RaterDataset(
-        train_data["data"], "rater/images", transform=get_val_transforms()
+        dataset_json="rater/train.json", imagefolder="rater/images", transform=get_val_transforms()
     )
 
     train_loader = DataLoader(

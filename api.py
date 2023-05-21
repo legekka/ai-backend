@@ -1,44 +1,10 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import torch
-from modules.utils import *
+from modules.utils import load_configs, load_models
+from modules.raterdataset import RaterDataset
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-
-def tagImage(image):
-    img = Image.open(image).convert("RGB")
-    img = val_transforms(img)
-    img = img.unsqueeze(0)
-    img = img.to(device)
-    # T11 is the tagger model
-    output = Tagger(img)
-    # create a list of tags and their probabilities
-    output = list(zip(Tagger.classes, output.tolist()[0]))
-    # filter out tags with probability < 0.5
-    output = list(filter(lambda x: x[1] > 0.5, output))
-    # sort by A-Z
-    output.sort(key=lambda x: x[0])
-    return output
-
-
-def rateImages(images):
-    images = [Image.open(image).convert("RGB") for image in images]
-    images = [val_transforms(image) for image in images]
-    images = torch.stack(images)
-    images = images.to(device)
-    # rater is the rater model
-    output = Rater(images)
-    ratings = []
-    # add usernames to output
-    for i in range(len(output)):
-        ratings.append(list(zip(Rater.usernames, output[i].tolist())))
-    # sort
-    # for i in range(len(ratings)):
-    #     ratings[i].sort(key=lambda x: x[1], reverse=True)
-    ratings = list(zip(images, ratings))
-    return ratings
-
 
 app = Flask("AI Backend API Server")
 
@@ -48,7 +14,7 @@ def app_tag():
     image = request.files.get("image")
     if image is None:
         return jsonify({"error": "No image provided"}), 400
-    tags = tagImage(image)
+    tags = TaggerNN.tagImage(image)
     return jsonify({"tags": tags}), 200
 
 
@@ -58,12 +24,12 @@ def app_rate():
     user = request.form.get("user")
     if user is None:
         return jsonify({"error": "No user provided"}), 400
-    if user not in Rater.usernames and user != "all":
+    if user not in RaterNN.usernames and user != "all":
         return jsonify({"error": "Invalid user"}), 400
     if image is None:
         return jsonify({"error": "No image provided"}), 400
-    ratings = rateImages([image])
-    ratings = ratings[0][1]
+    ratings = RaterNN.rateImage(image)
+    print(ratings)
     if user != "all":
         # filter out all ratings except for the user
         ratings = list(filter(lambda x: x[0] == user, ratings))
@@ -79,7 +45,7 @@ def app_rateBulk():
     user = request.form.get("user")
     if user is None:
         user = "all"
-    if user not in Rater.usernames and user != "all":
+    if user not in RaterNN.usernames and user != "all":
         return jsonify({"error": "Invalid user"}), 400
     if images is None:
         return jsonify({"error": "No images provided"}), 400
@@ -87,9 +53,8 @@ def app_rateBulk():
     if type(images) != list:
         images = [images]
 
-    ratings = rateImages(images)
-
-    ratings = [rating[1] for rating in ratings]
+    ratings = RaterNN.rateImageBatch(images)
+    print(ratings)
     if user != "all":
         # filter out all ratings except for the user for each image
         for i in range(len(ratings)):
@@ -101,14 +66,60 @@ def app_rateBulk():
         # for i in range(len(ratings)):
         for i in range(len(ratings)):
             ratings[i] = list(map(lambda x: x[1], ratings[i]))
-        return jsonify({"ratings": ratings, "users": Rater.usernames}), 200
+        return jsonify({"ratings": ratings, "users": RaterNN.usernames}), 200
 
+
+@app.route("/addrating", methods=["POST"])
+def app_addRating():
+    image = request.files.get("image")
+    if image is None:
+        return jsonify({"error": "No image provided"}), 400
+    username = request.form.get("user")
+    rating = request.form.get("rating")
+    user_and_rating = {
+        "username": username,
+        "rating": float(rating),
+    }
+    dataentry = Dataset.add_rating(
+        image=image, user_and_rating=user_and_rating, RaterNN=RaterNN
+    )
+    Dataset.save_dataset("test/train.json")
+    return jsonify(dataentry), 200
+
+@app.route("/getuserdata", methods=["GET"])
+def app_getUserData():
+    username = request.form.get("user")
+    if username is None:
+        return jsonify({"error": "No user provided"}), 400
+    if username not in RaterNN.usernames:
+        return jsonify({"error": "Invalid user"}), 400
+    userdata = Dataset.get_user_data(username)
+    return jsonify(userdata), 200
+
+@app.route("/getimage", methods=["GET"])
+def app_getImage():
+    image = request.form.get("image")
+    if image is None:
+        return jsonify({"error": "No image provided"}), 400
+    image_data = Dataset.get_image(image)
+    if image_data is None:
+        return jsonify({"error": "Image not found"}), 400
+    # send image data as an image
+    response = app.response_class(
+        response=image_data,
+        status=200,
+        mimetype="image/jpeg"
+    )
+    return response
 
 def main():
-    global config
+    global config, TaggerNN, RaterNN, Dataset
+
     config = load_configs()
-    global Tagger, Rater
-    Tagger, Rater = load_models(config, device=device)
+    TaggerNN, RaterNN = load_models(config, device=device)
+    Dataset = RaterDataset(
+        dataset_json="rater/train.json", imagefolder="rater/images", transform=None
+    )
 
     CORS(app)
     app.run(host="0.0.0.0", port="2444")
