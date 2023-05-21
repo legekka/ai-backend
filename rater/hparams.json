@@ -1,0 +1,8 @@
+{
+    "name": "RaterNN",
+    "batch_size": 128,
+    "epochs": 20,
+    "lr": 5e-3,
+    "lr_min": 1e-4,
+    "num_workers": 2
+}

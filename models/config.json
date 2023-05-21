@@ -1,6 +1,11 @@
 {
+  "rater": {
+    "checkpoint_path": "RaterNN.pth",
+    "num_users": 6,
+    "usernames": ["bluewolffy", "legekka", "Spkz", "ExModify", "Akko", "olteR"]
+  },
   "T11": {
-    "checkpoint_path": "T11-234526.pth",
+    "checkpoint_path": "T11_456720.pth",
     "learning_rate": 1e-4,
     "batch_size": 32,
     "num_epochs": 3,

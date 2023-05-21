@@ -1,5 +1,7 @@
 models/*.pth
 models/*.pt
-images/*
 training/*
 *.sh
+backup/*
+rater/images/*
+test/*
