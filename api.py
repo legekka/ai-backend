@@ -34,8 +34,8 @@ def rateImages(images):
     for i in range(len(output)):
         ratings.append(list(zip(Rater.usernames, output[i].tolist())))
     # sort
-    for i in range(len(ratings)):
-        ratings[i].sort(key=lambda x: x[1], reverse=True)
+    # for i in range(len(ratings)):
+    #     ratings[i].sort(key=lambda x: x[1], reverse=True)
     ratings = list(zip(images, ratings))
     return ratings
 
@@ -95,10 +95,13 @@ def app_rateBulk():
         for i in range(len(ratings)):
             ratings[i] = list(filter(lambda x: x[0] == user, ratings[i]))
             ratings[i] = ratings[i][0][1]
-
         return jsonify({"ratings": ratings}), 200
     else:
-        return jsonify({"ratings": ratings}), 200
+        # remove usernames from output
+        # for i in range(len(ratings)):
+        for i in range(len(ratings)):
+            ratings[i] = list(map(lambda x: x[1], ratings[i]))
+        return jsonify({"ratings": ratings, "users": Rater.usernames}), 200
 
 
 def main():
