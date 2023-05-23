@@ -4,7 +4,7 @@ from torchvision import models
 from PIL import Image
 
 class EfficientNetV2S(nn.Module):
-    def __init__(self, classes, device):
+    def __init__(self, classes, device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")):
         super().__init__()        
         efficientnet = models.efficientnet_v2_s()
         efficientnet.classifier = nn.Sequential(
@@ -37,7 +37,7 @@ class EfficientNetV2S(nn.Module):
 # RaterNN is a specialized model, that takes the output of EfficientNetV2S
 # without the classifier: so its input is 1280-dimensional
 class RaterNN(nn.Module):
-    def __init__(self, effnet, usernames, device):
+    def __init__(self, effnet, usernames, device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")):
         super().__init__()
         self.rater = nn.Sequential(
             nn.Linear(in_features=1280, out_features=512, bias=True),
@@ -85,6 +85,56 @@ class RaterNN(nn.Module):
         ratings = list(zip(images, ratings))
         ratings = [rating[1] for rating in ratings]
         return ratings
+    
+    def rateImage(self, image):
+        rating = self.rateImageBatch([image])[0]
+        return rating
+
+# RaterNNP is a personalized version of RaterNN, it is made for a single user
+class RaterNNP(nn.Module):
+    def __init__(self, effnet, username, device):
+        super().__init__()
+        self.rater = nn.Sequential(
+            nn.Linear(in_features=1280, out_features=512, bias=True),
+            nn.BatchNorm1d(512),
+            nn.SiLU(inplace=True),
+            nn.Dropout(p=0.15),
+            nn.Linear(in_features=512, out_features=256, bias=True),
+            nn.BatchNorm1d(256),
+            nn.SiLU(inplace=True),
+            nn.Dropout(p=0.05),
+            nn.Linear(in_features=256, out_features=128, bias=True),
+            nn.BatchNorm1d(128),
+            nn.SiLU(inplace=True),
+            nn.Dropout(p=0.01),
+            nn.Linear(in_features=128, out_features=1, bias=True),
+            nn.Sigmoid()
+        )
+        effnet.base_model.classifier = nn.Identity()
+        self.base_model = effnet.base_model
+        self.username = username
+        self.device = device
+
+        # freeze the base model
+        for param in self.base_model.parameters():
+            param.requires_grad = False
+
+    def forward(self, x):
+        x = self.base_model(x)
+        x = x.view(x.size(0), -1)  # flatten the output
+        x = self.rater(x)  
+        return x
+    
+    def rateImageBatch(self, images):
+        from modules.utils import get_val_transforms
+        images = [Image.open(image).convert("RGB") for image in images]
+        images = [get_val_transforms()(image) for image in images]
+        images = torch.stack(images)
+        images = images.to(self.device)
+        output = self(images)
+        output = output.tolist()
+        output = [output[i][0] for i in range(len(output))]
+        return output
     
     def rateImage(self, image):
         rating = self.rateImageBatch([image])[0]

@@ -5,3 +5,4 @@ training/*
 backup/*
 rater/images/*
 test/*
+.vscode

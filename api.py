@@ -2,7 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import torch
 from modules.utils import load_configs, load_models
-from modules.raterdataset import RaterDataset
+from modules.raterdataset import RTData
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -75,54 +75,70 @@ def app_addRating():
     if image is None:
         return jsonify({"error": "No image provided"}), 400
     username = request.form.get("user")
-    rating = request.form.get("rating")
-    user_and_rating = {
-        "username": username,
-        "rating": float(rating),
-    }
-    dataentry = Dataset.add_rating(
-        image=image, user_and_rating=user_and_rating, RaterNN=RaterNN
-    )
-    Dataset.save_dataset("test/train.json")
+    rating = float(request.form.get("rating"))
+    dataentry = Tdata.add_rating(image=image, username=username, rating=rating)
+    Tdata.save_dataset("test/dataset.json")
     return jsonify(dataentry), 200
+
 
 @app.route("/getuserdata", methods=["GET"])
 def app_getUserData():
-    username = request.form.get("user")
+    username = request.args.get("user")
     if username is None:
         return jsonify({"error": "No user provided"}), 400
     if username not in RaterNN.usernames:
         return jsonify({"error": "Invalid user"}), 400
-    userdata = Dataset.get_user_data(username)
+    userdata = Tdata.get_userdataset(username)
     return jsonify(userdata), 200
+
 
 @app.route("/getimage", methods=["GET"])
 def app_getImage():
-    image = request.form.get("image")
+    filename = request.args.get("filename")
+    if filename is None:
+        return jsonify({"error": "No image filename provided"}), 400
+    image = Tdata.get_image(filename)
     if image is None:
-        return jsonify({"error": "No image provided"}), 400
-    image_data = Dataset.get_image(image)
-    if image_data is None:
         return jsonify({"error": "Image not found"}), 400
-    # send image data as an image
-    response = app.response_class(
-        response=image_data,
-        status=200,
-        mimetype="image/jpeg"
-    )
+    response = app.response_class(response=image, status=200, mimetype="image/jpeg")
     return response
 
+
+@app.route("/verifydatasets", methods=["GET"])
+def app_verifyDatasets():
+    valid = Tdata.verify_full_dataset()
+    return jsonify({"valid": valid}), 200
+
+
+@app.route("/trainuser", methods=["POST"])
+def app_trainUser():
+    username = request.args.get("user")
+    if username is None:
+        return jsonify({"error": "No user provided"}), 400
+    if username not in RaterNN.usernames:
+        return jsonify({"error": "Invalid user"}), 400
+
+    from modules.training import PTrainer
+
+    trainer = PTrainer(username=username, tdata=Tdata)
+
+    import threading
+
+    thread = threading.Thread(target=trainer.train)
+    thread.start()
+    return jsonify({"success": True}), 200
+
+
 def main():
-    global config, TaggerNN, RaterNN, Dataset
+    global config, TaggerNN, RaterNN, Tdata
 
     config = load_configs()
     TaggerNN, RaterNN = load_models(config, device=device)
-    Dataset = RaterDataset(
-        dataset_json="rater/train.json", imagefolder="rater/images", transform=None
-    )
+    from modules.utils import get_val_transforms
 
+    Tdata = RTData(dataset_json="rater/dataset.json", transform=get_val_transforms())
     CORS(app)
-    app.run(host="0.0.0.0", port="2444")
+    app.run(host="0.0.0.0", port=2444)
 
 
 if __name__ == "__main__":
