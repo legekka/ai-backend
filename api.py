@@ -118,23 +118,42 @@ def app_trainUser():
     if username not in RaterNN.usernames:
         return jsonify({"error": "Invalid user"}), 400
 
-    from modules.training import PTrainer
+    global current_training
 
-    trainer = PTrainer(username=username, tdata=Tdata)
+    if current_training == "None" or not current_training.is_training():
+        from modules.training import PTrainer
 
-    import threading
+        current_training = PTrainer(username=username, tdata=Tdata)
+        current_training.start_training()
 
-    thread = threading.Thread(target=trainer.train)
-    thread.start()
-    return jsonify({"success": True}), 200
+        return jsonify({"success": True}), 200
+    else:
+        return jsonify({"error": "Already training"}), 400
+
+@app.route("/stoptraining", methods=["GET"])
+def app_stopTraining():
+    global current_training
+    if current_training == "None" or not current_training.is_training():
+        return jsonify({"error": "Not training"}), 400
+    else:
+        current_training.stop_training()
+        return jsonify({"success": True}), 200
+
+@app.route("/trainerstatus", methods=["GET"])
+def app_trainerStatus():
+    if current_training == "None":
+        return jsonify({"status": {"is_training": False}}), 200
+    else:
+        return jsonify({"status": current_training.get_status()}), 200
 
 
 def main():
-    global config, TaggerNN, RaterNN, Tdata
-
+    global config, TaggerNN, RaterNN, Tdata, current_training
     config = load_configs()
     TaggerNN, RaterNN = load_models(config, device=device)
     from modules.utils import get_val_transforms
+
+    current_training = "None"
 
     Tdata = RTData(dataset_json="rater/dataset.json", transform=get_val_transforms())
     CORS(app)
