@@ -129,3 +129,39 @@ def load_models(config, device):
     print("Done!")
 
     return T11, rater
+
+def process_image_for_dataset(image):
+    if (image.mode != "RGB"):
+        image = Image.open(image).convert("RGB")
+    width, height = image.size
+    aspect_ratio = width / height
+    
+    if aspect_ratio > 1:
+        new_width = 512
+        new_height = int(new_width / aspect_ratio)
+    else:
+        new_height = 512
+        new_width = int(new_height * aspect_ratio)
+    
+    image_512 = Image.new("RGB", (512, 512), (124, 116, 104))
+    image_512.paste(image.resize((new_width, new_height)), (int((512 - new_width) / 2), int((512 - new_height) / 2)))
+
+    return image_512
+
+
+def process_image_for_2x(image):
+    if (image.mode != "RGB"):
+        image = Image.open(image).convert("RGB")
+    width, height = image.size
+    aspect_ratio = width / height
+
+    if aspect_ratio > 1:
+        new_width = 768
+        new_height = int(new_width / aspect_ratio)
+    else:
+        new_height = 768
+        new_width = int(new_height * aspect_ratio)
+    
+    image_768 = image.resize((new_width, new_height))
+
+    return image_768

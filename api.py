@@ -17,6 +17,17 @@ def app_tag():
     tags = TaggerNN.tagImage(image)
     return jsonify({"tags": tags}), 200
 
+@app.route("/tagbulk", methods=["POST"])
+def app_tagBulk():
+    images = request.files.getlist("images")
+    if images is None:
+        return jsonify({"error": "No images provided"}), 400
+
+    if type(images) != list:
+        images = [images]
+
+    tags = TaggerNN.tagImageBatch(images)
+    return jsonify({"tags": tags}), 200
 
 @app.route("/rate", methods=["POST"])
 def app_rate():
@@ -77,7 +88,7 @@ def app_addRating():
     username = request.form.get("user")
     rating = float(request.form.get("rating"))
     dataentry = Tdata.add_rating(image=image, username=username, rating=rating)
-    Tdata.save_dataset("test/dataset.json")
+    Tdata.save_dataset("rater/dataset.json")
     return jsonify(dataentry), 200
 
 
@@ -88,7 +99,7 @@ def app_getUserData():
         return jsonify({"error": "No user provided"}), 400
     if username not in RaterNN.usernames:
         return jsonify({"error": "Invalid user"}), 400
-    userdata = Tdata.get_userdataset(username)
+    userdata = Tdata.get_userdataset(username).data
     return jsonify(userdata), 200
 
 
@@ -97,11 +108,21 @@ def app_getImage():
     filename = request.args.get("filename")
     if filename is None:
         return jsonify({"error": "No image filename provided"}), 400
-    image = Tdata.get_image(filename)
+    image = Tdata.get_image_2x(filename)
     if image is None:
         return jsonify({"error": "Image not found"}), 400
     response = app.response_class(response=image, status=200, mimetype="image/jpeg")
     return response
+
+@app.route("/getimagetags", methods=["GET"])
+def app_getImageTags():
+    filename = request.args.get("filename")
+    if filename is None:
+        return jsonify({"error": "No image filename provided"}), 400
+    tags = Tdata.get_image_tags(filename)
+    if tags is None:
+        return jsonify({"error": "Image not found"}), 400
+    return jsonify({"tags": tags}), 200
 
 
 @app.route("/verifydatasets", methods=["GET"])
@@ -109,6 +130,11 @@ def app_verifyDatasets():
     valid = Tdata.verify_full_dataset()
     return jsonify({"valid": valid}), 200
 
+@app.route("/updatetags", methods=["GET"])
+def app_updateTags():
+    Tdata.update_tags(tagger=TaggerNN)
+    Tdata.save_dataset("rater/dataset.json")
+    return jsonify({"success": True}), 200
 
 @app.route("/trainuser", methods=["POST"])
 def app_trainUser():

@@ -2,6 +2,8 @@ import torch
 from PIL import Image
 import os
 
+from modules.models import EfficientNetV2S
+
 # example data in dataset.json:
 # dataset.data[0] = {
 #    "image": "0001.jpg",
@@ -132,7 +134,9 @@ class RPDataset(torch.utils.data.Dataset):
         else:
             self.data.append({"image": image.filename, "rating": rating})
             if not found:
-                image.save(os.path.join(self.imagefolder, image.filename))
+                from modules.utils import process_image_for_dataset
+                image512 = process_image_for_dataset(image)
+                image512.save(os.path.join(self.imagefolder, image.filename))
             return self.data[-1]
         
 # this is the full dataset for RaterNN based on the RPDatasets
@@ -162,7 +166,7 @@ class RDataset(torch.utils.data.Dataset):
 class RTData():
     def __init__(self, dataset_json, transform=None):
         self.transform = transform
-        self.usersets, self.usernames, self.imagefolder, self.full_dataset = self.load_dataset(
+        self.usersets, self.usernames, self.imagefolder, self.imagefolder2x, self.tags, self.full_dataset = self.load_dataset(
             dataset_json
         )
 
@@ -193,7 +197,7 @@ class RTData():
             )
         else:
             full_dataset = []
-        return usersets, dataset["usernames"], dataset["imagefolder"], full_dataset
+        return usersets, dataset["usernames"], dataset["imagefolder"], dataset["imagefolder2x"], dataset["tags"], full_dataset
 
     def get_userdataset(self, username):
         index = self.usernames.index(username)
@@ -206,6 +210,20 @@ class RTData():
                 return f.read()
         else:
             return None
+        
+    def get_image_2x(self, filename):
+        # check if image exists on disk
+        if os.path.isfile(os.path.join(self.imagefolder2x, filename)):
+            with open(os.path.join(self.imagefolder2x, filename), "rb") as f:
+                return f.read()
+        else:
+            return None
+
+    def get_image_tags(self, filename):
+        if filename not in list(map(lambda x: x["image"], self.tags)):
+            return None
+        index = list(map(lambda x: x["image"], self.tags)).index(filename)
+        return self.tags[index]["tags"]
 
     def save_dataset(self, path):
         import json
@@ -213,9 +231,11 @@ class RTData():
         with open(path, "w") as f:
             json.dump(
                 {
-                    "userdata": list(map(lambda x: x.toList(), self.usersets)),
                     "usernames": self.usernames,
                     "imagefolder": self.imagefolder,
+                    "imagefolder2x": self.imagefolder2x,
+                    "tags": self.tags,
+                    "userdata": list(map(lambda x: x.toList(), self.usersets)),
                     "full_dataset": self.full_dataset.toList(),
                 },
                 f,
@@ -234,6 +254,10 @@ class RTData():
                 break
 
         item = self.usersets[user_index].add_image(image, rating, found)
+        if not found:
+            from modules.utils import process_image_for_2x
+            image768 = process_image_for_2x(image)
+            image768.save(os.path.join(self.imagefolder2x, image.filename))
         return item
     
     def create_full_dataset(self, ratermodels):
@@ -310,3 +334,48 @@ class RTData():
                     # print out which image and user has a different rating
                     return False
         return True
+    
+    # this function creates/updates the self.tags list, which contains tags for each image
+    
+    def update_tags(self, tagger: EfficientNetV2S):
+        # first we have to check if each image is in the tags list
+        for i in range(len(self.usersets)):
+            userset = self.usersets[i].toList()
+            for j in range(len(userset)):
+                if userset[j]["image"] not in list(map(lambda x: x["image"], self.tags)):
+                    self.tags.append({"image": userset[j]["image"], "tags": []})
+        
+        # now we will use tagger to predict tags for each image
+        # create batches of images
+        batch_size = 32
+        batches = []
+        for i in range(0, len(self.tags), batch_size):
+            batches.append(self.tags[i:i+batch_size])
+
+        import tqdm
+        # now we have to predict the tags for each batch
+        # we can use tagger.tagImageBatch(images) to predict the tags in a batch
+        loop = tqdm.tqdm(range(len(batches)))
+        for i in loop:
+            images = []
+            for j in range(len(batches[i])):
+                images.append(os.path.join(self.imagefolder, batches[i][j]["image"]))
+            tags = tagger.tagImageBatch(images)
+            # now the tags have probabilities too, in the following structure:
+            # [ [[tag1, prob1], [tag2, prob2], ...], [[tag1, prob1], [tag2, prob2], ...], ... ]
+            # we only need the tags, so we will remove the probabilities
+            for j in range(len(tags)):
+                tags[j] = list(map(lambda x: x[0], tags[j]))
+            # now we have to add the tags back to the data from the batches
+            for j in range(len(batches[i])):
+                batches[i][j]["tags"] = tags[j]
+            loop.set_description(f"Predicting tags for batch {i+1}/{len(batches)}")
+        
+        # finally we have to add the tags back to the self.tags list
+        for i in range(len(batches)):
+            for j in range(len(batches[i])):
+                index = list(map(lambda x: x["image"], self.tags)).index(batches[i][j]["image"])
+                self.tags[index]["tags"] = batches[i][j]["tags"]
+        
+        # now we have the full tags list
+        return self.tags

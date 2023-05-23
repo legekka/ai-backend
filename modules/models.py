@@ -21,17 +21,22 @@ class EfficientNetV2S(nn.Module):
         x = self.base_model(x)
         x = self.sigm(x)
         return x
-    
-    def tagImage(self, image):
+
+    def tagImageBatch(self, images):
         from modules.utils import get_val_transforms
-        img = Image.open(image).convert("RGB")
-        img = get_val_transforms()(img)
-        img = img.unsqueeze(0)
-        img = img.to(self.device)
-        output = self(img)
-        output = list(zip(self.classes, output.tolist()[0]))
-        output = list(filter(lambda x: x[1] > 0.5, output))
-        output.sort(key=lambda x: x[0])
+        images = [Image.open(image).convert("RGB") for image in images]
+        images = [get_val_transforms()(image) for image in images]
+        images = torch.stack(images)
+        images = images.to(self.device)
+        output = self(images)
+        output = output.tolist()
+        output = [[(self.classes[i], output[j][i]) for i in range(len(self.classes))] for j in range(len(output))]
+        output = [[x for x in output[j] if x[1] > 0.5] for j in range(len(output))]
+        output = [sorted(output[j], key=lambda x: x[0]) for j in range(len(output))]
+        return output
+
+    def tagImage(self, image):
+        output = self.tagImageBatch([image])[0]
         return output
 
 # RaterNN is a specialized model, that takes the output of EfficientNetV2S

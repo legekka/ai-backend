@@ -3,6 +3,7 @@ models/*.pt
 training/*
 *.sh
 backup/*
-rater/images/*
+rater/images
+rater/images2x
 test/*
 .vscode
