@@ -99,7 +99,14 @@ def app_getUserData():
         return jsonify({"error": "No user provided"}), 400
     if username not in RaterNN.usernames:
         return jsonify({"error": "Invalid user"}), 400
-    userdata = Tdata.get_userdataset(username).data
+    filters = request.args.get("filters")
+    if filters is None:
+        userdata = Tdata.get_userdataset(username).data
+    else:
+        filters = filters.split(",")
+        filters = list(map(lambda x: x.strip(), filters))
+        userdata = Tdata.get_userdataset_filtered(username, filters)
+        userdata = list(map(lambda x: {"image": x["image"], "rating": x["rating"]}, userdata))
     return jsonify(userdata), 200
 
 

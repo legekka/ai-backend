@@ -202,6 +202,18 @@ class RTData():
     def get_userdataset(self, username):
         index = self.usernames.index(username)
         return self.usersets[index]
+    
+    # this function returns the user's dataset filtered by the tags 
+    def get_userdataset_filtered(self, username, filter_tags):
+        import copy
+        index = self.usernames.index(username)
+        userdataset = copy.deepcopy(self.usersets[index].toList())
+        # add tags to the userdataset
+        for i in range(len(userdataset)):
+            userdataset[i]["tags"] = self.get_image_tags(userdataset[i]["image"])
+        # filter_tags contains those tags that images must have 
+        userdataset_filtered = list(filter(lambda x: all(elem in x["tags"] for elem in filter_tags), userdataset))
+        return userdataset_filtered
 
     def get_image(self, filename):
         # check if image exists on disk
