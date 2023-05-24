@@ -107,6 +107,15 @@ def app_getUserData():
         filters = list(map(lambda x: x.strip(), filters))
         userdata = Tdata.get_userdataset_filtered(username, filters)
         userdata = list(map(lambda x: {"image": x["image"], "rating": x["rating"]}, userdata))
+    page = request.args.get("page")
+    limit = request.args.get("limit")
+    if page is not None:
+        page = int(page)
+        if limit is None:
+            limit = 60
+        else:
+            limit = int(limit)
+        userdata = userdata[page * limit : (page + 1) * limit]
     return jsonify(userdata), 200
 
 
