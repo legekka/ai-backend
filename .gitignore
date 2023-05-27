@@ -7,3 +7,4 @@ rater/images
 rater/images2x
 test/*
 .vscode
+rater/dataset_backup.json

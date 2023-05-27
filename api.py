@@ -17,6 +17,7 @@ def app_tag():
     tags = TaggerNN.tagImage(image)
     return jsonify({"tags": tags}), 200
 
+
 @app.route("/tagbulk", methods=["POST"])
 def app_tagBulk():
     images = request.files.getlist("images")
@@ -28,6 +29,7 @@ def app_tagBulk():
 
     tags = TaggerNN.tagImageBatch(images)
     return jsonify({"tags": tags}), 200
+
 
 @app.route("/rate", methods=["POST"])
 def app_rate():
@@ -92,6 +94,31 @@ def app_addRating():
     return jsonify(dataentry), 200
 
 
+@app.route("/updaterating", methods=["POST"])
+def app_updateRating():
+    body = request.get_json()
+
+    filename = body["filename"]
+    if filename is None:
+        return jsonify({"error": "No image provided"}), 400
+    username = body["user"]
+    if username is None:
+        return jsonify({"error": "No user provided"}), 400
+    if username not in RaterNN.usernames:
+        return jsonify({"error": "Invalid user"}), 400
+    rating = body["rating"]
+    if rating is None:
+        return jsonify({"error": "No rating provided"}), 400
+    rating = float(rating)
+    if rating < 0 or rating > 1:
+        return jsonify({"error": "Invalid rating"}), 400
+    dataentry = Tdata.update_rating(filename=filename, username=username, rating=rating)
+    if dataentry is None:
+        return jsonify({"error": "Image not found"}), 400
+    Tdata.save_dataset("rater/dataset.json")
+    return jsonify(dataentry), 200
+
+
 @app.route("/getuserdata", methods=["GET"])
 def app_getUserData():
     username = request.args.get("user")
@@ -106,7 +133,9 @@ def app_getUserData():
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
         userdata = Tdata.get_userdataset_filtered(username, filters)
-        userdata = list(map(lambda x: {"image": x["image"], "rating": x["rating"]}, userdata))
+        userdata = list(
+            map(lambda x: {"image": x["image"], "rating": x["rating"]}, userdata)
+        )
     page = request.args.get("page")
     limit = request.args.get("limit")
     if page is not None:
@@ -130,6 +159,7 @@ def app_getImage():
     response = app.response_class(response=image, status=200, mimetype="image/jpeg")
     return response
 
+
 @app.route("/getimagetags", methods=["GET"])
 def app_getImageTags():
     filename = request.args.get("filename")
@@ -146,11 +176,13 @@ def app_verifyDatasets():
     valid = Tdata.verify_full_dataset()
     return jsonify({"valid": valid}), 200
 
+
 @app.route("/updatetags", methods=["GET"])
 def app_updateTags():
     Tdata.update_tags(tagger=TaggerNN)
     Tdata.save_dataset("rater/dataset.json")
     return jsonify({"success": True}), 200
+
 
 @app.route("/trainuser", methods=["POST"])
 def app_trainUser():
@@ -172,6 +204,7 @@ def app_trainUser():
     else:
         return jsonify({"error": "Already training"}), 400
 
+
 @app.route("/stoptraining", methods=["GET"])
 def app_stopTraining():
     global current_training
@@ -180,6 +213,7 @@ def app_stopTraining():
     else:
         current_training.stop_training()
         return jsonify({"success": True}), 200
+
 
 @app.route("/trainerstatus", methods=["GET"])
 def app_trainerStatus():
@@ -198,6 +232,12 @@ def main():
     current_training = "None"
 
     Tdata = RTData(dataset_json="rater/dataset.json", transform=get_val_transforms())
+    if Tdata.update_needed:
+        print("Updating tags...", flush=True, end="")
+        Tdata.update_tags(tagger=TaggerNN)
+        Tdata.save_dataset("rater/dataset.json")
+        print("Done!", flush=True)
+
     CORS(app)
     app.run(host="0.0.0.0", port=2444)
 
