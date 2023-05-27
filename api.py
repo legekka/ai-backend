@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import torch
-from modules.utils import load_configs, load_models
+from modules.utils import load_configs, load_models, checkpoint_dataset_hash
 from modules.raterdataset import RTData
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -11,18 +11,27 @@ app = Flask("AI Backend API Server")
 
 @app.route("/tag", methods=["POST"])
 def app_tag():
+    # region Request validation
+    
     image = request.files.get("image")
     if image is None:
         return jsonify({"error": "No image provided"}), 400
+    
+    # endregion
+
     tags = TaggerNN.tagImage(image)
     return jsonify({"tags": tags}), 200
 
 
 @app.route("/tagbulk", methods=["POST"])
 def app_tagBulk():
+    # region Request validation
+
     images = request.files.getlist("images")
     if images is None:
         return jsonify({"error": "No images provided"}), 400
+    
+    # endregion
 
     if type(images) != list:
         images = [images]
@@ -33,6 +42,8 @@ def app_tagBulk():
 
 @app.route("/rate", methods=["POST"])
 def app_rate():
+    # region Request validation
+
     image = request.files.get("image")
     user = request.form.get("user")
     if user is None:
@@ -41,6 +52,9 @@ def app_rate():
         return jsonify({"error": "Invalid user"}), 400
     if image is None:
         return jsonify({"error": "No image provided"}), 400
+    
+    # endregion
+
     ratings = RaterNN.rateImage(image)
     print(ratings)
     if user != "all":
@@ -54,6 +68,8 @@ def app_rate():
 
 @app.route("/ratebulk", methods=["POST"])
 def app_rateBulk():
+    # region Request validation
+    
     images = request.files.getlist("images")
     user = request.form.get("user")
     if user is None:
@@ -62,6 +78,8 @@ def app_rateBulk():
         return jsonify({"error": "Invalid user"}), 400
     if images is None:
         return jsonify({"error": "No images provided"}), 400
+    
+    # endregion
 
     if type(images) != list:
         images = [images]
@@ -76,7 +94,6 @@ def app_rateBulk():
         return jsonify({"ratings": ratings}), 200
     else:
         # remove usernames from output
-        # for i in range(len(ratings)):
         for i in range(len(ratings)):
             ratings[i] = list(map(lambda x: x[1], ratings[i]))
         return jsonify({"ratings": ratings, "users": RaterNN.usernames}), 200
@@ -84,10 +101,19 @@ def app_rateBulk():
 
 @app.route("/addrating", methods=["POST"])
 def app_addRating():
+    # region Request validation
+
     image = request.files.get("image")
     if image is None:
         return jsonify({"error": "No image provided"}), 400
     username = request.form.get("user")
+    if username is None:
+        return jsonify({"error": "No user provided"}), 400
+    if username not in RaterNN.usernames:
+        return jsonify({"error": "Invalid user"}), 400
+    
+    # endregion
+
     rating = float(request.form.get("rating"))
     dataentry = Tdata.add_rating(image=image, username=username, rating=rating)
     Tdata.save_dataset("rater/dataset.json")
@@ -96,6 +122,7 @@ def app_addRating():
 
 @app.route("/updaterating", methods=["POST"])
 def app_updateRating():
+    # region Request validation
     body = request.get_json()
 
     filename = body["filename"]
@@ -112,6 +139,9 @@ def app_updateRating():
     rating = float(rating)
     if rating < 0 or rating > 1:
         return jsonify({"error": "Invalid rating"}), 400
+    
+    # endregion
+
     dataentry = Tdata.update_rating(filename=filename, username=username, rating=rating)
     if dataentry is None:
         return jsonify({"error": "Image not found"}), 400
@@ -121,11 +151,16 @@ def app_updateRating():
 
 @app.route("/getuserdata", methods=["GET"])
 def app_getUserData():
+    # region Request validation
+
     username = request.args.get("user")
     if username is None:
         return jsonify({"error": "No user provided"}), 400
     if username not in RaterNN.usernames:
         return jsonify({"error": "Invalid user"}), 400
+    
+    # endregion
+
     filters = request.args.get("filters")
     if filters is None:
         userdata = Tdata.get_userdataset(username).data
@@ -150,9 +185,14 @@ def app_getUserData():
 
 @app.route("/getimage", methods=["GET"])
 def app_getImage():
+    # region Request validation
+    
     filename = request.args.get("filename")
     if filename is None:
         return jsonify({"error": "No image filename provided"}), 400
+    
+    # endregion
+    
     image = Tdata.get_image_2x(filename)
     if image is None:
         return jsonify({"error": "Image not found"}), 400
@@ -162,9 +202,14 @@ def app_getImage():
 
 @app.route("/getimagetags", methods=["GET"])
 def app_getImageTags():
+    # region Request validation
+    
     filename = request.args.get("filename")
     if filename is None:
         return jsonify({"error": "No image filename provided"}), 400
+    
+    # endregion
+    
     tags = Tdata.get_image_tags(filename)
     if tags is None:
         return jsonify({"error": "Image not found"}), 400
@@ -186,23 +231,34 @@ def app_updateTags():
 
 @app.route("/trainuser", methods=["POST"])
 def app_trainUser():
+    # region Request validation
     username = request.args.get("user")
     if username is None:
         return jsonify({"error": "No user provided"}), 400
     if username not in RaterNN.usernames:
         return jsonify({"error": "Invalid user"}), 400
 
+    # endregion
+
     global current_training
 
-    if current_training == "None" or not current_training.is_training():
-        from modules.training import PTrainer
-
-        current_training = PTrainer(username=username, tdata=Tdata)
-        current_training.start_training()
-
-        return jsonify({"success": True}), 200
-    else:
+    if current_training != "None" and current_training.is_training():
         return jsonify({"error": "Already training"}), 400
+
+    # region Check if model is already trained
+    modelhash = checkpoint_dataset_hash("models/RaterNNP_" + username + ".pth")
+    dataset_hash = Tdata.get_userdataset(username).dataset_hash
+
+    if modelhash == dataset_hash:
+        return jsonify({"error": "Model already trained"}), 400
+    # endregion
+
+    from modules.training import PTrainer
+
+    current_training = PTrainer(username=username, tdata=Tdata)
+    current_training.start_training()
+
+    return jsonify({"success": True}), 200
 
 
 @app.route("/stoptraining", methods=["GET"])

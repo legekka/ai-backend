@@ -103,11 +103,13 @@ class RaterDataset(torch.utils.data.Dataset):
                 return f.read()
 
 
+# single user's dataset
 class RPDataset(torch.utils.data.Dataset):
     def __init__(self, data, imagefolder, transform=None):
         self.data = data
         self.imagefolder = imagefolder
         self.transform = transform
+        self.dataset_hash = self.generate_hash()
 
     def __len__(self):
         return len(self.data)
@@ -126,10 +128,20 @@ class RPDataset(torch.utils.data.Dataset):
     def toList(self):
         return self.data
 
+    def generate_hash(self):
+        import hashlib
+        imageandratings = list(
+            map(lambda x: (x["image"], float(x["rating"])), self.data)
+        )
+        import json
+        return hashlib.sha256(json.dumps(imageandratings).encode()).hexdigest()
+    
     def add_image_rating(self, image, rating, found=False):
         if image.filename in list(map(lambda x: x["image"], self.data)):
             index = list(map(lambda x: x["image"], self.data)).index(image.filename)
             self.data[index]["rating"] = rating
+
+            self.dataset_hash = self.generate_hash()
             return self.data[index]
         else:
             self.data.append({"image": image.filename, "rating": rating})
@@ -138,6 +150,8 @@ class RPDataset(torch.utils.data.Dataset):
 
                 image512 = process_image_for_dataset(image)
                 image512.save(os.path.join(self.imagefolder, image.filename))
+
+            self.dataset_hash = self.generate_hash()
             return self.data[-1]
 
     def update_rating(self, image, rating):
@@ -146,6 +160,8 @@ class RPDataset(torch.utils.data.Dataset):
             i += 1
         if i < len(self.data):
             self.data[i]["rating"] = rating
+
+            self.dataset_hash = self.generate_hash()
             return self.data[i]
         else:
             return None
@@ -186,10 +202,9 @@ class RTData:
             self.imagefolder2x,
             self.tags,
             self.full_dataset,
-            self.update_needed
+            self.update_needed,
         ) = self.load_dataset(dataset_json)
- 
-    
+
     def load_dataset(self, dataset_json):
         import json
 
@@ -224,12 +239,14 @@ class RTData:
                     if index < len(dataset["tags"]):
                         entry.data[j]["tags"] = dataset["tags"][index]["tags"]
                     else:
-                        print("!!! Image not found in tags: " + dataset["userdata"][i][j]["image"] + ", update needed !!!")
+                        print(
+                            "!!! Image not found in tags: "
+                            + dataset["userdata"][i][j]["image"]
+                            + ", update needed !!!"
+                        )
                         update_needed = True
 
             usersets.append(entry)
-
-
 
         if "full_dataset" in dataset:
             full_dataset = RDataset(
@@ -248,7 +265,7 @@ class RTData:
             dataset["imagefolder2x"],
             dataset["tags"],
             full_dataset,
-            update_needed
+            update_needed,
         )
 
     def get_userdataset(self, username):

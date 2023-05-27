@@ -121,6 +121,7 @@ class PTrainer:
                 "models", self.config["T11"]["checkpoint_path"]
             ),
             "model": self.rater.rater.state_dict(),
+            "dataset_hash": self.Tdata.get_userdataset(self.username).dataset_hash,
         }
         checkpoint_name = f'{self.hparams["name"]}_{self.username}.pth'
         torch.save(checkpoint_dict, os.path.join("models", checkpoint_name))

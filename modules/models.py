@@ -119,6 +119,7 @@ class RaterNNP(nn.Module):
         self.base_model = effnet.base_model
         self.username = username
         self.device = device
+        self.dataset_hash = None
 
         # freeze the base model
         for param in self.base_model.parameters():

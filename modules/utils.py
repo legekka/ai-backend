@@ -44,9 +44,18 @@ def get_val_transforms():
 def load_checkpoint(model, path, device=torch.device("cpu")):
     checkpoint_dict = torch.load(path, map_location=device)
     model.load_state_dict(checkpoint_dict["model"])
+    if "dataset_hash" in checkpoint_dict:
+        model.dataset_hash = checkpoint_dict["dataset_hash"]
     model.to(device)
     return model
 
+def checkpoint_dataset_hash(path):
+    checkpoint_dict = torch.load(path, map_location=torch.device("cpu"))
+    if "dataset_hash" in checkpoint_dict:
+        return checkpoint_dict["dataset_hash"]
+    else:
+        return None
+    
 
 def load_image(image_path, unsqueeze=True):
     image = Image.open(image_path).convert("RGB")
