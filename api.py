@@ -12,11 +12,11 @@ app = Flask("AI Backend API Server")
 @app.route("/tag", methods=["POST"])
 def app_tag():
     # region Request validation
-    
+
     image = request.files.get("image")
     if image is None:
         return jsonify({"error": "No image provided"}), 400
-    
+
     # endregion
 
     tags = TaggerNN.tagImage(image)
@@ -30,7 +30,7 @@ def app_tagBulk():
     images = request.files.getlist("images")
     if images is None:
         return jsonify({"error": "No images provided"}), 400
-    
+
     # endregion
 
     if type(images) != list:
@@ -52,7 +52,7 @@ def app_rate():
         return jsonify({"error": "Invalid user"}), 400
     if image is None:
         return jsonify({"error": "No image provided"}), 400
-    
+
     # endregion
 
     ratings = RaterNN.rateImage(image)
@@ -69,7 +69,7 @@ def app_rate():
 @app.route("/ratebulk", methods=["POST"])
 def app_rateBulk():
     # region Request validation
-    
+
     images = request.files.getlist("images")
     user = request.form.get("user")
     if user is None:
@@ -78,7 +78,7 @@ def app_rateBulk():
         return jsonify({"error": "Invalid user"}), 400
     if images is None:
         return jsonify({"error": "No images provided"}), 400
-    
+
     # endregion
 
     if type(images) != list:
@@ -111,7 +111,7 @@ def app_addRating():
         return jsonify({"error": "No user provided"}), 400
     if username not in RaterNN.usernames:
         return jsonify({"error": "Invalid user"}), 400
-    
+
     # endregion
 
     rating = float(request.form.get("rating"))
@@ -139,7 +139,7 @@ def app_updateRating():
     rating = float(rating)
     if rating < 0 or rating > 1:
         return jsonify({"error": "Invalid rating"}), 400
-    
+
     # endregion
 
     dataentry = Tdata.update_rating(filename=filename, username=username, rating=rating)
@@ -158,7 +158,7 @@ def app_getUserData():
         return jsonify({"error": "No user provided"}), 400
     if username not in RaterNN.usernames:
         return jsonify({"error": "Invalid user"}), 400
-    
+
     # endregion
 
     filters = request.args.get("filters")
@@ -168,9 +168,6 @@ def app_getUserData():
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
         userdata = Tdata.get_userdataset_filtered(username, filters)
-        userdata = list(
-            map(lambda x: {"image": x["image"], "rating": x["rating"]}, userdata)
-        )
     page = request.args.get("page")
     limit = request.args.get("limit")
     if page is not None:
@@ -180,19 +177,22 @@ def app_getUserData():
         else:
             limit = int(limit)
         userdata = userdata[page * limit : (page + 1) * limit]
+    userdata = list(
+        map(lambda x: {"image": x["image"], "rating": x["rating"]}, userdata)
+    )
     return jsonify(userdata), 200
 
 
 @app.route("/getimage", methods=["GET"])
 def app_getImage():
     # region Request validation
-    
+
     filename = request.args.get("filename")
     if filename is None:
         return jsonify({"error": "No image filename provided"}), 400
-    
+
     # endregion
-    
+
     image = Tdata.get_image_2x(filename)
     if image is None:
         return jsonify({"error": "Image not found"}), 400
@@ -203,13 +203,13 @@ def app_getImage():
 @app.route("/getimagetags", methods=["GET"])
 def app_getImageTags():
     # region Request validation
-    
+
     filename = request.args.get("filename")
     if filename is None:
         return jsonify({"error": "No image filename provided"}), 400
-    
+
     # endregion
-    
+
     tags = Tdata.get_image_tags(filename)
     if tags is None:
         return jsonify({"error": "Image not found"}), 400
