@@ -176,12 +176,16 @@ def app_getUserData():
             limit = 60
         else:
             limit = int(limit)
+        max_page = len(userdata) // limit
         userdata = userdata[page * limit : (page + 1) * limit]
+    
     userdata = list(
         map(lambda x: {"image": x["image"], "rating": x["rating"]}, userdata)
     )
-    return jsonify(userdata), 200
-
+    if max_page is None:
+        return jsonify({"images":userdata}), 200
+    else:
+        return jsonify({"images":userdata, "max_page":max_page}), 200
 
 @app.route("/getimage", methods=["GET"])
 def app_getImage():
@@ -215,12 +219,38 @@ def app_getImageTags():
         return jsonify({"error": "Image not found"}), 400
     return jsonify({"tags": tags}), 200
 
+@app.route("/getstats", methods=["GET"])    
+def app_getStats():
+    # region Request validation
 
-@app.route("/verifydatasets", methods=["GET"])
+    username = request.args.get("user")
+    if username is None:
+        return jsonify({"error": "No user provided"}), 400
+    if username not in RaterNN.usernames:
+        return jsonify({"error": "Invalid user"}), 400
+
+    # endregion
+
+    stats = Tdata.get_userdataset(username).get_stats(username)
+    return jsonify(stats), 200
+
+
+@app.route("/verifyfulldataset", methods=["GET"])
 def app_verifyDatasets():
     valid = Tdata.verify_full_dataset()
     return jsonify({"valid": valid}), 200
 
+@app.route("/createfulldataset", methods=["GET"])
+def app_createFullDataset():
+    valid = Tdata.verify_full_dataset()
+    if valid:
+        return jsonify({"error": "Full dataset already up-to-date"}), 400
+    retraining_needed = Tdata.pre_verify_usersets_for_full_dataset()
+    if retraining_needed is not None:
+        return jsonify({"error": "Retraining needed", "users": retraining_needed}), 400
+    Tdata.create_full_dataset()
+    Tdata.save_dataset("rater/dataset.json")
+    return jsonify({"success": True}), 200
 
 @app.route("/updatetags", methods=["GET"])
 def app_updateTags():
@@ -229,7 +259,7 @@ def app_updateTags():
     return jsonify({"success": True}), 200
 
 
-@app.route("/trainuser", methods=["POST"])
+@app.route("/trainuser", methods=["GET"])
 def app_trainUser():
     # region Request validation
     username = request.args.get("user")
@@ -260,6 +290,32 @@ def app_trainUser():
 
     return jsonify({"success": True}), 200
 
+@app.route("/trainall", methods=["GET"])
+def app_trainAll():
+    global current_training
+
+    if current_training != "None" and current_training.is_training():
+        return jsonify({"error": "Already training"}), 400
+
+    # region Check if model is already trained
+    modelhash = checkpoint_dataset_hash("models/RaterNN.pth")
+    dataset_hash = Tdata.dataset_hash
+
+    if modelhash == dataset_hash:
+        return jsonify({"error": "Model already trained"}), 400
+    # endregion
+
+    valid = Tdata.verify_full_dataset()
+    if not valid:
+        return jsonify({"error": "Full dataset is not up-to-date"}), 400
+
+    from modules.training import Trainer
+    global RaterNN
+
+    current_training = Trainer(tdata=Tdata)
+    current_training.start_training(raternn=RaterNN)
+
+    return jsonify({"success": True}), 200
 
 @app.route("/stoptraining", methods=["GET"])
 def app_stopTraining():
@@ -278,6 +334,11 @@ def app_trainerStatus():
     else:
         return jsonify({"status": current_training.get_status()}), 200
 
+@app.route("/removeduplicates", methods=["GET"])
+def app_removeDuplicates():
+    Tdata.remove_duplicates()
+    Tdata.save_dataset("rater/dataset.json")
+    return jsonify({"success": True}), 200
 
 def main():
     global config, TaggerNN, RaterNN, Tdata, current_training

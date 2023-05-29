@@ -105,9 +105,10 @@ class RaterDataset(torch.utils.data.Dataset):
 
 # single user's dataset
 class RPDataset(torch.utils.data.Dataset):
-    def __init__(self, data, imagefolder, transform=None):
+    def __init__(self, data, imagefolder, username, transform=None):
         self.data = data
         self.imagefolder = imagefolder
+        self.username = username
         self.transform = transform
         self.dataset_hash = self.generate_hash()
 
@@ -130,12 +131,14 @@ class RPDataset(torch.utils.data.Dataset):
 
     def generate_hash(self):
         import hashlib
+
         imageandratings = list(
             map(lambda x: (x["image"], float(x["rating"])), self.data)
         )
         import json
+
         return hashlib.sha256(json.dumps(imageandratings).encode()).hexdigest()
-    
+
     def add_image_rating(self, image, rating, found=False):
         if image.filename in list(map(lambda x: x["image"], self.data)):
             index = list(map(lambda x: x["image"], self.data)).index(image.filename)
@@ -165,6 +168,35 @@ class RPDataset(torch.utils.data.Dataset):
             return self.data[i]
         else:
             return None
+
+    # get statistics of the user's ratings
+    def get_stats(self, username):
+        from modules.utils import checkpoint_dataset_hash
+
+        # the categories are the following: 0, 0.16, 0.33, 0.5, 0.67, 0.84, 1 (roughly)
+        summary = [0, 0, 0, 0, 0, 0, 0]
+        for i in range(len(self.data)):
+            rating = round(self.data[i]["rating"] * 6)
+            summary[int(rating)] += 1
+        # get models/RaterNNP_<username>.pth modification date
+        import os
+        import time
+
+        RaterNNP_date = os.path.getmtime("models/RaterNNP_" + username + ".pth")
+        RaterNNP_hash = checkpoint_dataset_hash("models/RaterNNP_" + username + ".pth")
+        RaterNN_date = os.path.getmtime("models/RaterNN.pth")
+
+        RaterNNP_up_to_date = RaterNNP_hash == self.dataset_hash
+
+        RaterNN_up_to_date = RaterNN_date > RaterNNP_date
+
+        stats = {
+            "image_count": len(self.data),
+            "rating_distribution": summary,
+            "RaterNNP_up_to_date": RaterNNP_up_to_date,
+            "RaterNN_up_to_date": RaterNN_up_to_date,
+        }
+        return stats
 
 
 # this is the full dataset for RaterNN based on the RPDatasets
@@ -204,6 +236,7 @@ class RTData:
             self.full_dataset,
             self.update_needed,
         ) = self.load_dataset(dataset_json)
+        self.dataset_hash = self.generate_hash()
 
     def load_dataset(self, dataset_json):
         import json
@@ -225,7 +258,10 @@ class RTData:
         update_needed = False
         for i in range(len(dataset["userdata"])):
             entry = RPDataset(
-                dataset["userdata"][i], dataset["imagefolder"], self.transform
+                data=dataset["userdata"][i],
+                imagefolder=dataset["imagefolder"],
+                username=dataset["usernames"][i],
+                transform=self.transform,
             )
             if dataset["tags"]:
                 for j in range(len(dataset["userdata"][i])):
@@ -267,6 +303,16 @@ class RTData:
             full_dataset,
             update_needed,
         )
+
+    def generate_hash(self):
+        import hashlib
+
+        imageandratings = list(
+            map(lambda x: (x["image"], x["ratings"]), self.full_dataset.toList())
+        )
+        import json
+
+        return hashlib.sha256(json.dumps(imageandratings).encode()).hexdigest()
 
     def get_userdataset(self, username):
         index = self.usernames.index(username)
@@ -364,7 +410,18 @@ class RTData:
         user_index = self.usernames.index(username)
         return self.usersets[user_index].update_rating(filename, rating)
 
-    def create_full_dataset(self, ratermodels):
+    def pre_verify_usersets_for_full_dataset(self):
+        retraining_needed = []
+        for i in range(len(self.usersets)):
+            username = self.usernames[i]
+            if self.usersets[i].get_stats(username)["RaterNNP_up_to_date"] == False:
+                retraining_needed.append(username)
+        if len(retraining_needed) > 0:
+            return retraining_needed
+        else:
+            return None
+
+    def create_full_dataset(self):
         # first we create the full image list
         data = []
         for i in range(len(self.usersets)):
@@ -389,6 +446,11 @@ class RTData:
 
         import tqdm
         import copy
+
+        from modules.utils import load_personalized_models, load_configs
+
+        config = load_configs()
+        ratermodels = load_personalized_models(config=config)
 
         for i in range(len(self.usernames)):
             # first we filter out the data that has anything but -1 in the ratings
@@ -452,6 +514,9 @@ class RTData:
                     != self.full_dataset.toList()[index]["ratings"][i]
                 ):
                     # print out which image and user has a different rating
+                    print(
+                        f"Image {self.usersets[i].toList()[j]['image']} has a different rating for user {self.usernames[i]}"
+                    )
                     return False
         return True
 
@@ -504,3 +569,18 @@ class RTData:
 
         # now we have the full tags list
         return self.tags
+
+    def remove_duplicates(self):
+        count = 0
+        for userset in self.usersets:
+            indexes_to_remove = []
+            for i in range(len(userset.toList())):
+                for j in range(i + 1, len(userset.toList())):
+                    if userset.toList()[i]["image"] == userset.toList()[j]["image"]:
+                        indexes_to_remove.append(j)
+                        count += 1
+            indexes_to_remove = sorted(indexes_to_remove, reverse=True)
+            for index in indexes_to_remove:
+                userset.toList().pop(index)
+            userset.dataset_hash = userset.generate_hash()
+        print(f"Total duplicates removed: {count}")

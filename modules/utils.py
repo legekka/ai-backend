@@ -75,7 +75,7 @@ def load_configs():
     return config
 
 
-def load_personalized_models(config, device):
+def load_personalized_models(config, device=None):
     import os
 
     if device is None:
@@ -174,3 +174,8 @@ def process_image_for_2x(image):
     image_768 = image.resize((new_width, new_height))
 
     return image_768
+
+
+# aligns the rating to 0, 0.17, 0.33, 0.5, 0.67, 0.83, 1
+def align_rating(rating):
+    return round(rating * 6) / 6
