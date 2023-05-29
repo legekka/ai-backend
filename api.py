@@ -187,9 +187,9 @@ def app_getUserData():
     else:
         return jsonify({"images":userdata, "max_page":max_page}), 200
 
-@app.route("/getimageneighbors", methods=["GET"])
-def app_getImageNeighbors():
-    
+@app.route("/getimageneighbours", methods=["GET"])
+def app_getImageNeighbours():
+
     # region Request validation
 
     filename = request.args.get("filename")
@@ -220,8 +220,8 @@ def app_getImageNeighbors():
     response = {
         "position": index + 1,
         "max_image": len(userdata),
-        "next_image": userdata[index + 1]["image"] if index < len(userdata) - 1 else None,
-        "prev_image": userdata[index - 1]["image"] if index > 0 else None,
+        "next_image": {"image": userdata[index + 1]["image"] if index < len(userdata) - 1 else None, "rating": userdata[index + 1]["rating"] if index < len(userdata) - 1 else None },
+        "prev_image": {"image": userdata[index - 1]["image"] if index > 0 else None, "rating": userdata[index - 1]["rating"] if index > 0 else None },
     }
 
     return jsonify(response), 200  
