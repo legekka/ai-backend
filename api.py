@@ -171,21 +171,60 @@ def app_getUserData():
     page = request.args.get("page")
     limit = request.args.get("limit")
     if page is not None:
-        page = int(page)
+        page = int(page) - 1
         if limit is None:
             limit = 60
         else:
             limit = int(limit)
-        max_page = len(userdata) // limit
+        max_page = len(userdata) // limit + 1
         userdata = userdata[page * limit : (page + 1) * limit]
     
     userdata = list(
         map(lambda x: {"image": x["image"], "rating": x["rating"]}, userdata)
     )
-    if max_page is None:
+    if page is None:
         return jsonify({"images":userdata}), 200
     else:
         return jsonify({"images":userdata, "max_page":max_page}), 200
+
+@app.route("/getimageneighbors", methods=["GET"])
+def app_getImageNeighbors():
+    
+    # region Request validation
+
+    filename = request.args.get("filename")
+    if filename is None:
+        return jsonify({"error": "No image filename provided"}), 400
+    username = request.args.get("user")
+    if username is None:
+        return jsonify({"error": "No user provided"}), 400
+    if username not in RaterNN.usernames:
+        return jsonify({"error": "Invalid user"}), 400
+    
+    # endregion
+
+    filters = request.args.get("filters")
+    if filters is None:
+        userdata = Tdata.get_userdataset(username).data
+    else:
+        filters = filters.split(",")
+        filters = list(map(lambda x: x.strip(), filters))
+        userdata = Tdata.get_userdataset_filtered(username, filters)
+
+    # find index of filename image in userdata
+    if filename not in list(map(lambda x: x["image"], userdata)):
+        return jsonify({"error": "Image not found"}), 400
+
+    index = list(map(lambda x: x["image"], userdata)).index(filename)
+
+    response = {
+        "position": index + 1,
+        "max_image": len(userdata),
+        "next_image": userdata[index + 1]["image"] if index < len(userdata) - 1 else None,
+        "prev_image": userdata[index - 1]["image"] if index > 0 else None,
+    }
+
+    return jsonify(response), 200  
 
 @app.route("/getimage", methods=["GET"])
 def app_getImage():
