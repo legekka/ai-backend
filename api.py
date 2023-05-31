@@ -3,6 +3,7 @@ from flask_cors import CORS
 import torch
 from modules.utils import load_models, checkpoint_dataset_hash
 from modules.raterdataset import RTData
+import modules.db_functions as dbf
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -142,11 +143,11 @@ def app_updateRating():
 
     # endregion
 
-    dataentry = Tdata.update_rating(filename=filename, username=username, rating=rating)
-    if dataentry is None:
+    success = dbf.update_rating(filename, username, rating)
+    if not success:
         return jsonify({"error": "Image not found"}), 400
-    Tdata.save_dataset("rater/dataset.json")
-    return jsonify(dataentry), 200
+    
+    return jsonify({"success": True}), 200
 
 
 @app.route("/getuserdata", methods=["GET"])
@@ -163,11 +164,11 @@ def app_getUserData():
 
     filters = request.args.get("filters")
     if filters is None:
-        userdata = Tdata.get_userdataset(username).data
+        userdata = dbf.get_userdata(username)
     else:
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
-        userdata = Tdata.get_userdataset_filtered(username, filters)
+        userdata = dbf.get_userdata_filtered(username, filters)
     page = request.args.get("page")
     limit = request.args.get("limit")
     if page is not None:
@@ -179,9 +180,6 @@ def app_getUserData():
         max_page = len(userdata) // limit + 1
         userdata = userdata[page * limit : (page + 1) * limit]
     
-    userdata = list(
-        map(lambda x: {"image": x["image"], "rating": x["rating"]}, userdata)
-    )
     if page is None:
         return jsonify({"images":userdata}), 200
     else:
@@ -205,11 +203,11 @@ def app_getImageNeighbours():
 
     filters = request.args.get("filters")
     if filters is None:
-        userdata = Tdata.get_userdataset(username).data
+        userdata = dbf.get_userdata(username)
     else:
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
-        userdata = Tdata.get_userdataset_filtered(username, filters)
+        userdata = dbf.get_userdata_filtered(username, filters)
 
     # find index of filename image in userdata
     if filename not in list(map(lambda x: x["image"], userdata)):
@@ -236,7 +234,7 @@ def app_getImage():
 
     # endregion
 
-    image = Tdata.get_image_2x(filename)
+    image = dbf.get_image(filename)
     if image is None:
         return jsonify({"error": "Image not found"}), 400
     response = app.response_class(response=image, status=200, mimetype="image/jpeg")
@@ -253,7 +251,7 @@ def app_getImageTags():
 
     # endregion
 
-    tags = Tdata.get_image_tags(filename)
+    tags = dbf.get_image_tags(filename)
     if tags is None:
         return jsonify({"error": "Image not found"}), 400
     return jsonify({"tags": tags}), 200
@@ -270,7 +268,7 @@ def app_getStats():
 
     # endregion
 
-    stats = Tdata.get_userdataset(username).get_stats(username)
+    stats = dbf.get_dataset_stats(username)
     if current_training != "None":
         trainerstats = current_training.get_status()
         stats["trainer"] = trainerstats
@@ -322,7 +320,7 @@ def app_trainUser():
 
     # region Check if model is already trained
     modelhash = checkpoint_dataset_hash("models/RaterNNP_" + username + ".pth")
-    dataset_hash = Tdata.get_userdataset(username).dataset_hash
+    dataset_hash = dbf.generate_dataset_hash(username)
 
     if modelhash == dataset_hash:
         return jsonify({"error": "Model already trained"}), 400
@@ -395,12 +393,12 @@ def main():
 
     current_training = "None"
 
-    Tdata = RTData(dataset_json="rater/dataset.json", transform=get_val_transforms())
-    if Tdata.update_needed:
-        print("Updating tags...", flush=True, end="")
-        Tdata.update_tags(tagger=TaggerNN)
-        Tdata.save_dataset("rater/dataset.json")
-        print("Done!", flush=True)
+    # Tdata = RTData(dataset_json="rater/dataset.json", transform=get_val_transforms())
+    # if Tdata.update_needed:
+    #     print("Updating tags...", flush=True, end="")
+    #     Tdata.update_tags(tagger=TaggerNN)
+    #     Tdata.save_dataset("rater/dataset.json")
+    #     print("Done!", flush=True)
 
     CORS(app)
     app.run(host="0.0.0.0", port=2444)
