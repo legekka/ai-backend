@@ -271,6 +271,12 @@ def app_getStats():
     # endregion
 
     stats = Tdata.get_userdataset(username).get_stats(username)
+    if current_training != "None":
+        trainerstats = current_training.get_status()
+        stats["trainer"] = trainerstats
+    else:
+        stats["trainer"] = None
+
     return jsonify(stats), 200
 
 
@@ -339,6 +345,8 @@ def app_trainAll():
     # region Check if model is already trained
     modelhash = checkpoint_dataset_hash("models/RaterNN.pth")
     dataset_hash = Tdata.dataset_hash
+
+    ## TODO: Check dates of files
 
     if modelhash == dataset_hash:
         return jsonify({"error": "Model already trained"}), 400

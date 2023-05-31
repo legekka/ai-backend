@@ -496,6 +496,9 @@ class RTData:
         self.full_dataset = RDataset(
             data, self.usernames, self.imagefolder, self.transform
         )
+
+        self.dataset_hash = self.full_dataset.get_hash()
+
         return self.full_dataset
 
     # this function verifies if the full dataset's human ratings are correct (it is the same as the usersets)
