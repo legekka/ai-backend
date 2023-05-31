@@ -1,3 +1,5 @@
+# TODO: Major revision needed
+
 import json
 import os
 import torch
@@ -11,10 +13,12 @@ from modules.raterdataset import *
 
 class PTrainer:
     def __init__(self, username, tdata=None):
+        from modules.utils import load_models
+
         self.username = username
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.config, self.hparams = self.load_configs()
-        self.T11 = self.load_models()
+        self.hparams = self.load_hparams()
+        self.T11 = load_models(device=self.device)
         self.Tdata = self.load_dataset() if tdata is None else tdata
         self.rater = self.create_rater()
         self.train_loader = self.create_train_loader()
@@ -25,24 +29,13 @@ class PTrainer:
         self.thread = None
         self.stop_event = None
 
-    def load_configs(self):
-        with open("models/config.json") as f:
-            config = json.load(f)
-
+    def load_hparams(self):
         with open("rater/hparams_P.json") as f:
             hparams = json.load(f)
-        return config, hparams
-
-    def load_models(self):
-        T11 = EfficientNetV2S(classes=self.config["T11"]["tags"], device=self.device)
-        T11 = load_checkpoint(
-            T11,
-            os.path.join("models", self.config["T11"]["checkpoint_path"]),
-            device=self.device,
-        )
-        return T11
+        return hparams
 
     def load_dataset(self):
+        # TODO: This needs some rework because of the database
         Tdata = RTData(
             dataset_json=self.hparams["dataset_json"], transform=get_val_transforms()
         )
@@ -92,7 +85,7 @@ class PTrainer:
                 if self.stop_event.is_set():
                     print("Training stopped")
                     return
-                
+
                 images = images.to(self.device)
                 ratings = ratings.to(self.device)
 
@@ -113,13 +106,15 @@ class PTrainer:
                     lr=self.scheduler.get_last_lr()[0],
                 )
 
-                self.progress = (epoch * len(self.train_loader) + batch_idx) / (self.hparams["epochs"] * len(self.train_loader))
+                self.progress = (epoch * len(self.train_loader) + batch_idx) / (
+                    self.hparams["epochs"] * len(self.train_loader)
+                )
 
         print("Training complete! Saving model...", flush=True, end="")
+        from modules.config import Config
+
         checkpoint_dict = {
-            "effnet_checkpoint": os.path.join(
-                "models", self.config["T11"]["checkpoint_path"]
-            ),
+            "effnet_checkpoint": os.path.join("models", Config.T11["checkpoint_path"]),
             "model": self.rater.rater.state_dict(),
             "dataset_hash": self.Tdata.get_userdataset(self.username).dataset_hash,
         }
@@ -129,7 +124,6 @@ class PTrainer:
 
         # set self to "None" to indicate that training finished
         self.thread = None
-
 
     def start_training(self):
         import threading
@@ -159,12 +153,15 @@ class PTrainer:
             "progress": f"{self.progress*100:.2f}%",
         }
         return status
-    
+
+
 class Trainer:
     def __init__(self, tdata=None):
+        from modules.utils import load_models
+
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.config, self.hparams = self.load_configs()
-        self.T11 = self.load_models()
+        self.hparams = self.load_hparams()
+        self.T11 = load_models
         self.Tdata = self.load_dataset() if tdata is None else tdata
         self.rater = self.create_rater()
         self.train_loader = self.create_train_loader()
@@ -175,37 +172,26 @@ class Trainer:
         self.thread = None
         self.stop_event = None
 
-    def load_configs(self):
-        with open("models/config.json") as f:
-            config = json.load(f)
-
+    def load_hparams(self):
         with open("rater/hparams.json") as f:
             hparams = json.load(f)
-        return config, hparams
-    
-    def load_models(self):
-        T11 = EfficientNetV2S(classes=self.config["T11"]["tags"], device=self.device)
-        T11 = load_checkpoint(
-            T11,
-            os.path.join("models", self.config["T11"]["checkpoint_path"]),
-            device=self.device,
-        )
-        return T11
-    
+        return hparams
+
     def load_dataset(self):
         Tdata = RTData(
             dataset_json=self.hparams["dataset_json"], transform=get_val_transforms()
         )
         return Tdata
-    
+
     def create_rater(self):
+        from modules.config import Config
         rater = RaterNN(
             self.T11,
-            usernames=self.config["rater"]["usernames"],
+            usernames=Config.rater["usernames"],
             device=self.device,
         )
         return rater
-    
+
     def create_train_loader(self):
         train_loader = DataLoader(
             self.Tdata.full_dataset,
@@ -214,23 +200,25 @@ class Trainer:
             num_workers=self.hparams["num_workers"],
         )
         return train_loader
-    
+
     def create_optimizer(self):
         optimizer = torch.optim.Adam(self.rater.parameters(), lr=self.hparams["lr"])
         return optimizer
-    
+
     def create_scheduler(self):
         t_max = len(self.train_loader) * self.hparams["epochs"]
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, T_max=t_max, eta_min=self.hparams["lr_min"]
         )
         return scheduler
-    
+
     def create_criterion(self):
         criterion = torch.nn.BCELoss()
         return criterion
-    
-    def train(self, raternn : RaterNN = None): # raternn is the currently loaded model in the API. If it's not None, we have to reload its weights with the new ones after training is done 
+
+    def train(
+        self, raternn: RaterNN = None
+    ):  # raternn is the currently loaded model in the API. If it's not None, we have to reload its weights with the new ones after training is done
         self.rater.train()
         self.rater.to(self.device)
 
@@ -242,7 +230,7 @@ class Trainer:
                 if self.stop_event.is_set():
                     print("Training stopped")
                     return
-                
+
                 images = images.to(self.device)
                 ratings = ratings.to(self.device)
 
@@ -263,12 +251,16 @@ class Trainer:
                     lr=self.scheduler.get_last_lr()[0],
                 )
 
-                self.progress = (epoch * len(self.train_loader) + batch_idx) / (self.hparams["epochs"] * len(self.train_loader))
+                self.progress = (epoch * len(self.train_loader) + batch_idx) / (
+                    self.hparams["epochs"] * len(self.train_loader)
+                )
 
         print("Training complete! Saving model...", flush=True, end="")
+        from modules.config import Config
+
         checkpoint_dict = {
             "effnet_checkpoint": os.path.join(
-                "models", self.config["T11"]["checkpoint_path"]
+                "models", Config.T11["checkpoint_path"]
             ),
             "model": self.rater.rater.state_dict(),
             "dataset_hash": self.Tdata.dataset_hash,
@@ -279,17 +271,17 @@ class Trainer:
 
         # set self to "None" to indicate that training finished
         self.thread = None
-        
+
         # reload the model in the API if it was loaded before training
         if raternn is not None:
             raternn.rater = load_checkpoint(
                 raternn.rater,
-                os.path.join("models", self.config["rater"]["checkpoint_path"]),
+                os.path.join("models", Config.rater["checkpoint_path"]),
                 device=self.device,
             )
             print("RaterNN model reloaded in API")
 
-    def start_training(self, raternn : RaterNN = None):
+    def start_training(self, raternn: RaterNN = None):
         import threading
 
         if self.thread is not None:
@@ -298,7 +290,7 @@ class Trainer:
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.train, args=(raternn,))
         self.thread.start()
-    
+
     def stop_training(self):
         if self.thread is None:
             raise Exception("No training session is currently running")
@@ -306,10 +298,10 @@ class Trainer:
         self.stop_event.set()
         self.thread.join()
         self.thread = None
-    
+
     def is_training(self):
         return self.thread is not None
-    
+
     def get_status(self):
         status = {
             "current_user": "all",

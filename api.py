@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import torch
-from modules.utils import load_configs, load_models, checkpoint_dataset_hash
+from modules.utils import load_models, checkpoint_dataset_hash
 from modules.raterdataset import RTData
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -388,9 +388,9 @@ def app_removeDuplicates():
     return jsonify({"success": True}), 200
 
 def main():
-    global config, TaggerNN, RaterNN, Tdata, current_training
-    config = load_configs()
-    TaggerNN, RaterNN = load_models(config, device=device)
+    global TaggerNN, RaterNN, Tdata, current_training
+
+    TaggerNN, RaterNN = load_models(device=device)
     from modules.utils import get_val_transforms
 
     current_training = "None"

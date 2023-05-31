@@ -4,3 +4,5 @@ flask-cors
 torch
 torchvision
 asyncio
+peewee
+psycopg2

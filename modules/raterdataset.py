@@ -447,10 +447,9 @@ class RTData:
         import tqdm
         import copy
 
-        from modules.utils import load_personalized_models, load_configs
+        from modules.utils import load_personalized_models
 
-        config = load_configs()
-        ratermodels = load_personalized_models(config=config)
+        ratermodels = load_personalized_models()
 
         for i in range(len(self.usernames)):
             # first we filter out the data that has anything but -1 in the ratings
