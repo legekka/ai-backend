@@ -155,6 +155,27 @@ def app_updateRating():
     
     return jsonify({"success": True}), 200
 
+@app.route("/removerating", methods=["GET"])
+def app_removeRating():
+    # region Request validation
+
+    filename = request.args.get("filename")
+    if filename is None:
+        return jsonify({"error": "No image provided"}), 400
+    try:
+        discord_id = int(request.args.get("user"))
+    except:
+        return jsonify({"error": "Invalid user"}), 400
+    if discord_id not in dbf.get_discord_ids():
+        return jsonify({"error": "Invalid user"}), 400
+
+    # endregion
+
+    success = dbf.remove_rating(filename, discord_id)
+    if not success:
+        return jsonify({"error": "Image not found"}), 400
+    
+    return jsonify({"success": True}), 200
 
 @app.route("/getuserdata", methods=["GET"])
 def app_getUserData():
@@ -404,13 +425,6 @@ def app_trainerStatus():
         return jsonify({"status": {"is_training": False}}), 200
     else:
         return jsonify({"status": current_training.get_status()}), 200
-
-# TODO: remove this
-@app.route("/removeduplicates", methods=["GET"])
-def app_removeDuplicates():
-    Tdata.remove_duplicates()
-    Tdata.save_dataset("rater/dataset.json")
-    return jsonify({"success": True}), 200
 
 def main():
     global TaggerNN, RaterNN, Tdata, current_training

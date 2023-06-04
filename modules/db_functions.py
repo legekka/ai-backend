@@ -236,10 +236,10 @@ def update_rating(filename, discord_id, rating_value):
         .where(Image.filename == filename, User.discord_id == discord_id)
         )
     
+    from modules.utils import align_rating
+
     # if the rating exists, update it
     if len(rating) > 0:
-        from modules.utils import align_rating
-
         try:
             rating = rating[0]
             rating.rating = align_rating(rating_value)
@@ -248,12 +248,71 @@ def update_rating(filename, discord_id, rating_value):
             print("Error updating rating: " + str(e))
             return False
         return True
-    
-    return False
+    else:
+        # otherwise, create it
+        try:
+            image_id = (Image
+                .select(Image.id)
+                .where(Image.filename == filename)
+                .dicts()
+                )[0]["id"]
+        except:
+            print("Error getting image_id")
+            return False
+        
+        user_id = (User
+            .select(User.id)
+            .where(User.discord_id == discord_id)
+            .dicts()
+            )[0]["id"]
+        
+        try:
+            Rating.create(image_id=image_id, user_id=user_id, rating=align_rating(rating_value))
+        except Exception as e:
+            print("Error creating rating: " + str(e))
+            return False
+
+        return True
 
 def add_rating(filename, discord_id, rating_value):
     # TODO: implement
     pass
+
+def remove_rating(filename, discord_id):
+    # this simply removes all ratings for a given image and user
+    # first we need to get the image.id
+    image_id = (Image
+        .select(Image.id)
+        .where(Image.filename == filename)
+        .dicts()
+        )
+    
+    if len(image_id) == 0:
+        return False
+    else: 
+        image_id = image_id[0]["id"]
+    
+    # now we have to get the user.id
+    user_id = (User
+        .select(User.id)
+        .where(User.discord_id == discord_id)
+        .dicts()
+        )
+    
+    if len(user_id) == 0:
+        return False
+    else:
+        user_id = user_id[0]["id"]
+
+
+    # now we can delete the rating
+    (Rating
+        .delete()
+        .where(Rating.image_id == image_id, Rating.user_id == user_id)
+        .execute()
+        )
+    
+    return True
 
 def get_dataset_stats(discord_id):
     data = get_userdata(discord_id)
