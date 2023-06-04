@@ -246,10 +246,10 @@ def app_getImage():
 
     # endregion
 
-    image = dbf.get_image(filename)
-    if image is None:
+    imagefile = dbf.get_image(filename)
+    if imagefile is None:
         return jsonify({"error": "Image not found"}), 400
-    response = app.response_class(response=image, status=200, mimetype="image/jpeg")
+    response = app.response_class(response=imagefile.read(), status=200, mimetype="image/jpeg")
     return response
 
 
@@ -308,12 +308,16 @@ def app_createFullDataset():
     Tdata.save_dataset("rater/dataset.json")
     return jsonify({"success": True}), 200
 
-# TODO: Implement this using the database
 @app.route("/updatetags", methods=["GET"])
 def app_updateTags():
-    Tdata.update_tags(tagger=TaggerNN)
-    Tdata.save_dataset("rater/dataset.json")
-    return jsonify({"success": True}), 200
+    full = False
+    if request.args.get("full"):
+        full = request.args.get("full") == "true"
+
+    global TaggerNN
+    from modules.utils import update_tags
+    updated_images_count = update_tags(taggernn=TaggerNN, full=full)
+    return jsonify({"updated_images_count": updated_images_count}), 200
 
 
 # TODO: Implement this using the database

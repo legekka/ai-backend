@@ -193,3 +193,50 @@ def raternn_up_to_date(discord_ids):
             return False
     
     return True
+
+
+# this function updates the images which are missing tags. If full is true, it will update all images
+from modules.models import EfficientNetV2S
+def update_tags(taggernn : EfficientNetV2S, full=False):
+    import modules.db_functions as dbf
+
+    if full:
+        images = dbf.get_all_image_filenames()
+    else:
+        images = dbf.get_image_filenames_with_missing_tags()
+    
+    if len(images) == 0:
+        return 0
+    
+    # create batches of 32 images
+    batch_size = 32
+    batches = [images[i:i + batch_size] for i in range(0, len(images), batch_size)]
+    result_batches = []
+    import tqdm
+
+    for batch in tqdm.tqdm(batches):
+        # batch is a list of image_filenames
+        imagebatch = dbf.get_images(filenames=batch, mode="512_t")
+        tags = taggernn.tagImageBatch(imagebatch)
+
+        # now the tags have probabilities too, in the following structure:
+        # [ [[tag1, prob1], [tag2, prob2], ...], [[tag1, prob1], [tag2, prob2], ...], ... ]
+        # we only need the tags, so we will remove the probabilities
+        for i in range(len(tags)):
+            tags[i] = list(map(lambda x: x[0], tags[i]))
+            
+        result_batches.append(tags)
+
+    # convert result_batches to a list of tuples (image_filename, tags)
+    result = []
+    for i in range(len(batches)):
+        for j in range(len(batches[i])):
+            # we need to add the image filename from the original batch
+            result.append((batches[i][j], result_batches[i][j]))
+    
+    # now we have a list of tuples (image_filename, tags), we can update the database
+    # dbf has a function only for updating tags for a single image, so we will use that
+    for image_filename, tags in tqdm.tqdm(result):
+        dbf.update_tags(image_filename, tags)
+    
+    return len(images)

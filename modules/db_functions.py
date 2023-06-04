@@ -111,7 +111,39 @@ def get_image(filename):
     fileobject.write(imagefile)
     fileobject.seek(0)
 
-    return fileobject.read()
+    return fileobject
+
+def get_images(filenames, mode="768"):
+    # this gets multiple images from the database
+    if mode == "768":
+        images = (Image
+            .select(Image.filename, Image.image_768)
+            .where(Image.filename.in_(filenames))
+            .dicts()
+            )
+    else:
+        images = (Image
+            .select(Image.filename, Image.image_512_t)
+            .where(Image.filename.in_(filenames))
+            .dicts()
+            )
+        
+    
+    imagelist = []
+    for image in images:
+        import io
+        import base64
+        if mode == "768":
+            imagefile = base64.b64decode(image["image_768"])
+        else:
+            imagefile = base64.b64decode(image["image_512_t"])
+        fileobject = io.BytesIO()
+        fileobject.write(imagefile)
+        fileobject.seek(0)
+
+        imagelist.append(fileobject)
+    
+    return imagelist
 
 def get_image_tags(filename):
     # this as it sounds, gets the tags for an image
@@ -129,6 +161,34 @@ def get_image_tags(filename):
     
     return formatted_tags
 
+def get_all_image_filenames():
+    # this gets all image filenames
+    images = (Image
+        .select(Image.filename)
+        .dicts()
+        )
+    
+    formatted_images = []
+    for image in images:
+        formatted_images.append(image["filename"])
+    
+    return formatted_images
+
+def get_image_filenames_with_missing_tags():
+    # this gets all images that have no tags
+    images = (Image
+        .select(Image.filename)
+        .join(ImageTag, JOIN.LEFT_OUTER)
+        .where(ImageTag.id.is_null())
+        .dicts()
+        )
+
+    formatted_images = []
+    for image in images:
+        formatted_images.append(image["filename"])
+    
+    return formatted_images
+
 def generate_dataset_hash(discord_id):
     data = get_userdata(discord_id)
 
@@ -136,6 +196,35 @@ def generate_dataset_hash(discord_id):
     import json
 
     return hashlib.sha256(json.dumps(data).encode()).hexdigest()
+
+def update_tags(filename, tags):
+    # this updates the tags for an image
+    # first, we need to get the image.id, then we delete the old tags from ImageTags
+    
+    image_id = (Image
+        .select(Image.id)
+        .where(Image.filename == filename)
+        .dicts()
+        )[0]["id"]
+    
+    (ImageTag
+        .delete()
+        .where(ImageTag.image_id == image_id)
+        .execute()
+        )
+
+    # then, add the new tags
+    for tag in tags:
+        tag_id = (Tag
+            .select(Tag.id)
+            .where(Tag.name == tag)
+            .dicts()
+            )[0]["id"]
+        
+        ImageTag.create(image_id=image_id, tag_id=tag_id)
+        
+    return True
+
 
 def update_rating(filename, discord_id, rating_value):
     # first find the rating
