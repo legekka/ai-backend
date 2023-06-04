@@ -1,5 +1,7 @@
 # Main API Endpoints
 
+W.I.P. but already working.
+
 ## Default Endpoints
 
 | Endpoint      | Method | Purpose                       | Params                                                      |
