@@ -1,0 +1,9 @@
+{
+    "name": "RaterNN",
+    "dataset_json": "rater/dataset.json",
+    "batch_size": 128,
+    "epochs": 20,
+    "lr": 5e-3,
+    "lr_min": 1e-3,
+    "num_workers": 2
+}

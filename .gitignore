@@ -1,3 +1,10 @@
-models/*.pth
-images/*
+models/*
 training/*
+*.sh
+backup/*
+rater/images
+rater/images2x
+test/*
+.vscode
+rater/dataset.json
+config.json

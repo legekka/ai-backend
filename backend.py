@@ -18,7 +18,7 @@ from tqdm import tqdm
 import random
 import asyncio
 
-cudadevice = "cuda:0"
+cudadevice = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # load users.json
 with open("models/users.json") as f:
@@ -26,6 +26,13 @@ with open("models/users.json") as f:
 n_classes = len(users)
 with open("models/tags.json") as f:
     classes = json.load(f)["labels"]
+with open("models/tags_T8_1k.json") as f:
+    tags_t8 = json.load(f)["labels"]
+with open("models/tags_T7_4k.json") as f:
+    tags_t7 = json.load(f)["labels"]
+
+with open("models/tags_T9_1k.json") as f:
+    tags_t9 = json.load(f)
 
 ratermodels = []
 
@@ -49,7 +56,7 @@ class Resnext101(nn.Module):
 class Resnext50(nn.Module):
     def __init__(self, n_classes):
         super().__init__()
-        resnet = models.resnext50_32x4d(pretrained=False)
+        resnet = models.resnext50_32x4d(weights=None)
         resnet.fc = nn.Sequential(
             nn.Dropout(p=0.2),
             nn.Linear(in_features=resnet.fc.in_features,
@@ -61,6 +68,53 @@ class Resnext50(nn.Module):
     def forward(self, x):
         return self.sigm(self.base_model(x))
 
+class EfficientNetB4(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
+        efficientnet = models.efficientnet_b4(weights='EfficientNet_B4_Weights.DEFAULT')
+        efficientnet.classifier = nn.Sequential(
+             nn.Dropout(p=0.4, inplace=True),
+             nn.Linear(in_features=1792, out_features=num_classes, bias=True)
+        )
+        self.base_model = efficientnet
+        self.sigm = nn.Sigmoid()
+    
+    def forward(self, x):
+        x = self.base_model(x)
+        x = self.sigm(x)
+        return x
+
+class EfficientNetB2(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
+        efficientnet = models.efficientnet_b2(weights='EfficientNet_B2_Weights.DEFAULT')
+        efficientnet.classifier = nn.Sequential(
+             nn.Dropout(p=0.3, inplace=True),
+             nn.Linear(in_features=1408, out_features=num_classes, bias=True)
+        )
+        self.base_model = efficientnet
+        self.sigm = nn.Sigmoid()
+    
+    def forward(self, x):
+        x = self.base_model(x)
+        x = self.sigm(x)
+        return x
+
+class EfficientNetB3(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
+        efficientnet = models.efficientnet_b3(weights='EfficientNet_B3_Weights.DEFAULT')
+        efficientnet.classifier = nn.Sequential(
+             nn.Dropout(p=0.3, inplace=True),
+             nn.Linear(in_features=1536, out_features=num_classes, bias=True)
+        )
+        self.base_model = efficientnet
+        self.sigm = nn.Sigmoid()
+    
+    def forward(self, x):
+        x = self.base_model(x)
+        x = self.sigm(x)
+        return x
 
 class Rater(nn.Module):
     def __init__(self):
@@ -122,6 +176,14 @@ val_transform = transforms.Compose(
     ]
 )
 
+T9_val_transform = transforms.Compose(
+    [
+        transforms.Resize((300, 300)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std),
+    ]
+)
+
 device = torch.device(cudadevice)
 
 # loading model from saved files
@@ -132,6 +194,28 @@ taggernn.load_state_dict(torch.load(
 taggernn.to(device)
 taggernn.eval()
 print("TaggerNN4S loaded.")
+
+t8e2 = EfficientNetB2(len(tags_t8))
+t8e2.load_state_dict(torch.load(
+    "models/T8E2-epoch-23-12.pth", map_location=device))
+t8e2.to(device)
+t8e2.eval()
+print("T8E2 loaded.")
+
+t7e = EfficientNetB4(len(tags_t7))
+t7e.load_state_dict(torch.load(
+    "models/T7E-epoch-3-14.pth", map_location=device))
+t7e.to(device)
+t7e.eval()
+print("T7E4 loaded.")
+
+t9 = EfficientNetB3(len(tags_t9))
+t9.load_state_dict(torch.load(
+    "models/T9v2-512140.pt", map_location=device))
+t9.to(device)
+t9.eval()
+print("T9 loaded.")
+
 
 print("Loading TaggerNN4S(-2) for Rater")
 tagger = Resnext50(989)  # 989 classes
@@ -174,6 +258,57 @@ def tagImage(image):
     labels = labels.tolist()
     return confidences, labels
 
+def tagImageT8E2(image):
+    img = Image.open(image)
+    img = val_transform(img)
+    img = img.unsqueeze(0)
+    img = img.to(device)
+    with torch.no_grad():
+        raw_preds = t8e2(img).cpu().numpy()[0]
+        roundpreds = []
+        for i in range(len(raw_preds)):
+            roundpreds.append(round(raw_preds[i], 4))
+        raw_preds = np.array(raw_preds > 0.5, dtype=float)
+        labels = np.array(tags_t8)[np.argwhere(raw_preds > 0.5)[:, 0]]
+        confidences = np.array(roundpreds)[np.argwhere(raw_preds > 0.5)[:, 0]]
+    confidences = confidences.tolist()
+    labels = labels.tolist()
+    return confidences, labels
+
+def tagImageT7E(image):
+    img = Image.open(image)
+    img = val_transform(img)
+    img = img.unsqueeze(0)
+    img = img.to(device)
+    with torch.no_grad():
+        raw_preds = t7e(img).cpu().numpy()[0]
+        roundpreds = []
+        for i in range(len(raw_preds)):
+            roundpreds.append(round(raw_preds[i], 4))
+        raw_preds = np.array(raw_preds > 0.5, dtype=float)
+        labels = np.array(tags_t7)[np.argwhere(raw_preds > 0.5)[:, 0]]
+        confidences = np.array(roundpreds)[np.argwhere(raw_preds > 0.5)[:, 0]]
+    confidences = confidences.tolist()
+    labels = labels.tolist()
+    return confidences, labels
+
+def tagImageT9(image):
+    img = Image.open(image)
+    img = T9_val_transform(img)
+    img = img.unsqueeze(0)
+    img = img.to(device)
+
+    with torch.no_grad():
+        raw_preds = t9(img).cpu().numpy()[0]
+        roundpreds = []
+        for i in range(len(raw_preds)):
+            roundpreds.append(round(raw_preds[i], 4))
+        raw_preds = np.array(raw_preds > 0.5, dtype=float)
+        labels = np.array(tags_t9)[np.argwhere(raw_preds > 0.5)[:, 0]]
+        confidences = np.array(roundpreds)[np.argwhere(raw_preds > 0.5)[:, 0]]
+    confidences = confidences.tolist()
+    labels = labels.tolist()
+    return confidences, labels
 
 def rateImage(image, username):
     img = Image.open(image)
@@ -211,6 +346,12 @@ CORS(app)
 def tag():
     image = request.files.get("image")
     confidences, labels = tagImage(image)
+    return jsonify({"labels": labels, "confidences": confidences})
+
+@app.route("/tag2", methods=["POST"])
+def tag2():
+    image = request.files.get("image")
+    confidences, labels = tagImageT9(image)
     return jsonify({"labels": labels, "confidences": confidences})
 
 
