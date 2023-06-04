@@ -111,9 +111,10 @@ def app_addRating():
     image = request.files.get("image")
     if image is None:
         return jsonify({"error": "No image provided"}), 400
-    discord_id = request.form.get("user")
-    if discord_id is None:
-        return jsonify({"error": "No user provided"}), 400
+    try:
+        discord_id = int(request.args.get("user"))
+    except:
+        return jsonify({"error": "Invalid user"}), 400
     if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
 
@@ -133,9 +134,10 @@ def app_updateRating():
     filename = body["filename"]
     if filename is None:
         return jsonify({"error": "No image provided"}), 400
-    discord_id = body["user"]
-    if discord_id is None:
-        return jsonify({"error": "No user provided"}), 400
+    try:
+        discord_id = int(body["user"])
+    except:
+        return jsonify({"error": "Invalid user"}), 400
     if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
     rating = body["rating"]
@@ -158,9 +160,10 @@ def app_updateRating():
 def app_getUserData():
     # region Request validation
 
-    discord_id = request.args.get("user")
-    if discord_id is None:
-        return jsonify({"error": "No user provided"}), 400
+    try:
+        discord_id = int(request.args.get("user"))
+    except:
+        return jsonify({"error": "Invalid user"}), 400
     if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
 
@@ -201,9 +204,10 @@ def app_getImageNeighbours():
     filename = request.args.get("filename")
     if filename is None:
         return jsonify({"error": "No image filename provided"}), 400
-    discord_id = request.args.get("user")
-    if discord_id is None:
-        return jsonify({"error": "No user provided"}), 400
+    try:
+        discord_id = int(request.args.get("user"))
+    except:
+        return jsonify({"error": "Invalid user"}), 400
     if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
     
@@ -272,9 +276,10 @@ def app_getImageTags():
 def app_getStats():
     # region Request validation
 
-    discord_id = request.args.get("user")
-    if discord_id is None:
-        return jsonify({"error": "No user provided"}), 400
+    try:
+        discord_id = int(request.args.get("user"))
+    except:
+        return jsonify({"error": "Invalid user"}), 400
     if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
 

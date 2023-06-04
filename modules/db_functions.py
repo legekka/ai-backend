@@ -265,7 +265,7 @@ def get_dataset_stats(discord_id):
 
     from modules.utils import checkpoint_dataset_hash, raternn_up_to_date
 
-    raternnp_hash = checkpoint_dataset_hash("models/RaterNNP_" + discord_id + ".pth")
+    raternnp_hash = checkpoint_dataset_hash("models/RaterNNP_" + str(discord_id) + ".pth")
     dataset_hash = generate_dataset_hash(discord_id)
 
     stats = {

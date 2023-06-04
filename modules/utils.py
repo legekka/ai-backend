@@ -183,12 +183,12 @@ def raternn_up_to_date(discord_ids):
     raternn_date = os.path.getmtime("models/RaterNN.pth")
 
     for discord_id in discord_ids:
-        model_hash = checkpoint_dataset_hash(os.path.join("models", f"RaterNNP_{discord_id}.pth"))
+        model_hash = checkpoint_dataset_hash(os.path.join("models", f"RaterNNP_{str(discord_id)}.pth"))
         dataset_hash = dbf.generate_dataset_hash(discord_id)
         if model_hash != dataset_hash:
             return False
         
-        raternnp_date = os.path.getmtime(os.path.join("models", f"RaterNNP_{discord_id}.pth"))
+        raternnp_date = os.path.getmtime(os.path.join("models", f"RaterNNP_{str(discord_id)}.pth"))
         if raternnp_date > raternn_date:
             return False
     
@@ -224,7 +224,7 @@ def update_tags(taggernn : EfficientNetV2S, full=False):
         # we only need the tags, so we will remove the probabilities
         for i in range(len(tags)):
             tags[i] = list(map(lambda x: x[0], tags[i]))
-            
+
         result_batches.append(tags)
 
     # convert result_batches to a list of tuples (image_filename, tags)
