@@ -173,23 +173,22 @@ def process_image_for_2x(image):
     return image_768
 
 
-# aligns the rating to 0, 0.17, 0.33, 0.5, 0.67, 0.83, 1
 def align_rating(rating):
     return round(round(rating * 6) / 6, 2)
 
-def raternn_up_to_date(usernames):
+def raternn_up_to_date(discord_ids):
     import os
     import modules.db_functions as dbf
     
     raternn_date = os.path.getmtime("models/RaterNN.pth")
 
-    for username in usernames:
-        model_hash = checkpoint_dataset_hash(os.path.join("models", f"RaterNNP_{username}.pth"))
-        dataset_hash = dbf.generate_dataset_hash(username)
+    for discord_id in discord_ids:
+        model_hash = checkpoint_dataset_hash(os.path.join("models", f"RaterNNP_{discord_id}.pth"))
+        dataset_hash = dbf.generate_dataset_hash(discord_id)
         if model_hash != dataset_hash:
             return False
         
-        raternnp_date = os.path.getmtime(os.path.join("models", f"RaterNNP_{username}.pth"))
+        raternnp_date = os.path.getmtime(os.path.join("models", f"RaterNNP_{discord_id}.pth"))
         if raternnp_date > raternn_date:
             return False
     

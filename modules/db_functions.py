@@ -20,7 +20,19 @@ def _get_order_by_param(sort):
 
     return order_by_param
 
-def get_users():
+def get_discord_ids():
+    discord_ids = (User
+        .select(User.discord_id)
+        .dicts()
+        )
+    
+    formatted_discord_ids = []
+    for discord_id in discord_ids:
+        formatted_discord_ids.append(discord_id["discord_id"])
+    
+    return formatted_discord_ids
+
+def get_usernames():
     usernames = (User
         .select(User.username)
         .dicts()
@@ -32,14 +44,14 @@ def get_users():
     
     return formatted_usernames
 
-def get_userdata(username, sort=None):
+def get_userdata(discord_id, sort=None):
 
     ratings = (Rating
         .select(Image.filename, Rating.rating, Image.id)
         .join(Image)
         .switch(Rating)
         .join(User)
-        .where(User.username == username)
+        .where(User.discord_id == discord_id)
         .order_by(_get_order_by_param(sort))
         .dicts()
         )
@@ -54,13 +66,8 @@ def get_userdata(username, sort=None):
     
     return formatted_ratings
 
-def get_userdata_filtered(username, filters, sort=None):
+def get_userdata_filtered(discord_id, filters, sort=None):
     # this is similar to get_userdata, but also connects the images to the tags table, to check whether the tags in the filters dict are present in the image tags
-    # Connections:
-    #  Rating-->Image
-    #  Rating-->User
-    #  Image-->ImageTag
-    #  ImageTag-->Tag
     ratings = (Rating
         .select(Image.filename, Rating.rating, Image.id)
         .join(Image)
@@ -70,8 +77,7 @@ def get_userdata_filtered(username, filters, sort=None):
         .join(ImageTag)
         .switch(ImageTag)
         .join(Tag)
-        .where(User.username == username, Tag.name.in_(filters))
-        # we have to check if the count of the tags is equal to the count of the filters, because if we don't, we'll get images that have at least one of the tags, not all of them
+        .where(User.discord_id == discord_id, Tag.name.in_(filters))
         .group_by(Image.filename, Rating.rating, Image.id)
         .having(fn.COUNT(Tag.name) == len(filters))
         .order_by(_get_order_by_param(sort)) 
@@ -100,7 +106,6 @@ def get_image(filename):
     
     import io
     import base64
-    # this is a base64 encoded and decoded string, so we need to convert it to bytes
     imagefile = base64.b64decode(imagefile)
     fileobject = io.BytesIO()
     fileobject.write(imagefile)
@@ -124,22 +129,22 @@ def get_image_tags(filename):
     
     return formatted_tags
 
-def generate_dataset_hash(username):
-    data = get_userdata(username)
+def generate_dataset_hash(discord_id):
+    data = get_userdata(discord_id)
 
     import hashlib
     import json
 
     return hashlib.sha256(json.dumps(data).encode()).hexdigest()
 
-def update_rating(filename, username, rating_value):
+def update_rating(filename, discord_id, rating_value):
     # first find the rating
     rating = (Rating
         .select()
         .join(Image)
         .switch(Rating)
         .join(User)
-        .where(Image.filename == filename, User.username == username)
+        .where(Image.filename == filename, User.discord_id == discord_id)
         )
     
     # if the rating exists, update it
@@ -157,12 +162,12 @@ def update_rating(filename, username, rating_value):
     
     return False
 
-def add_rating(filename, username, rating_value):
+def add_rating(filename, discord_id, rating_value):
     # TODO: implement
     pass
 
-def get_dataset_stats(username):
-    data = get_userdata(username)
+def get_dataset_stats(discord_id):
+    data = get_userdata(discord_id)
 
     summary = [0, 0, 0, 0, 0, 0, 0]
     for i in range(len(data)):
@@ -171,13 +176,13 @@ def get_dataset_stats(username):
 
     from modules.utils import checkpoint_dataset_hash, raternn_up_to_date
 
-    raternnp_hash = checkpoint_dataset_hash("models/RaterNNP_" + username + ".pth")
-    dataset_hash = generate_dataset_hash(username)
+    raternnp_hash = checkpoint_dataset_hash("models/RaterNNP_" + discord_id + ".pth")
+    dataset_hash = generate_dataset_hash(discord_id)
 
     stats = {
         "image_count": len(data),
         "rating_distribution": summary,
         "RaterNNP_up_to_date": raternnp_hash == dataset_hash,
-        "RaterNN_up_to_date": raternn_up_to_date(get_users()),
+        "RaterNN_up_to_date": raternn_up_to_date(get_discord_ids()),
     }
     return stats

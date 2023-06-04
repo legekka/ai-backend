@@ -43,6 +43,8 @@ def app_tagBulk():
 
 @app.route("/rate", methods=["POST"])
 def app_rate():
+    # TODO: change this to use discord_ids instead of usernames
+
     # region Request validation
 
     image = request.files.get("image")
@@ -69,6 +71,8 @@ def app_rate():
 
 @app.route("/ratebulk", methods=["POST"])
 def app_rateBulk():
+    # TODO: change this to use discord_ids instead of usernames
+
     # region Request validation
 
     images = request.files.getlist("images")
@@ -107,18 +111,18 @@ def app_addRating():
     image = request.files.get("image")
     if image is None:
         return jsonify({"error": "No image provided"}), 400
-    username = request.form.get("user")
-    if username is None:
+    discord_id = request.form.get("user")
+    if discord_id is None:
         return jsonify({"error": "No user provided"}), 400
-    if username not in RaterNN.usernames:
+    if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
 
     # endregion
 
     rating = float(request.form.get("rating"))
-    dataentry = Tdata.add_rating(image=image, username=username, rating=rating)
-    Tdata.save_dataset("rater/dataset.json")
-    return jsonify(dataentry), 200
+    # TODO: implement adding ratings to database
+
+    return jsonify({"success": True}), 200
 
 
 @app.route("/updaterating", methods=["POST"])
@@ -129,10 +133,10 @@ def app_updateRating():
     filename = body["filename"]
     if filename is None:
         return jsonify({"error": "No image provided"}), 400
-    username = body["user"]
-    if username is None:
+    discord_id = body["user"]
+    if discord_id is None:
         return jsonify({"error": "No user provided"}), 400
-    if username not in RaterNN.usernames:
+    if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
     rating = body["rating"]
     if rating is None:
@@ -143,7 +147,7 @@ def app_updateRating():
 
     # endregion
 
-    success = dbf.update_rating(filename, username, rating)
+    success = dbf.update_rating(filename, discord_id, rating)
     if not success:
         return jsonify({"error": "Image not found"}), 400
     
@@ -154,10 +158,10 @@ def app_updateRating():
 def app_getUserData():
     # region Request validation
 
-    username = request.args.get("user")
-    if username is None:
+    discord_id = request.args.get("user")
+    if discord_id is None:
         return jsonify({"error": "No user provided"}), 400
-    if username not in RaterNN.usernames:
+    if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
 
     # endregion
@@ -168,11 +172,11 @@ def app_getUserData():
 
     filters = request.args.get("filters")
     if filters is None:
-        userdata = dbf.get_userdata(username, sort)
+        userdata = dbf.get_userdata(discord_id, sort)
     else:
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
-        userdata = dbf.get_userdata_filtered(username, filters, sort)
+        userdata = dbf.get_userdata_filtered(discord_id, filters, sort)
     page = request.args.get("page")
     limit = request.args.get("limit")
     if page is not None:
@@ -197,10 +201,10 @@ def app_getImageNeighbours():
     filename = request.args.get("filename")
     if filename is None:
         return jsonify({"error": "No image filename provided"}), 400
-    username = request.args.get("user")
-    if username is None:
+    discord_id = request.args.get("user")
+    if discord_id is None:
         return jsonify({"error": "No user provided"}), 400
-    if username not in RaterNN.usernames:
+    if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
     
     # endregion
@@ -211,11 +215,11 @@ def app_getImageNeighbours():
 
     filters = request.args.get("filters")
     if filters is None:
-        userdata = dbf.get_userdata(username, sort)
+        userdata = dbf.get_userdata(discord_id, sort)
     else:
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
-        userdata = dbf.get_userdata_filtered(username, filters, sort)
+        userdata = dbf.get_userdata_filtered(discord_id, filters, sort)
 
     # find index of filename image in userdata
     if filename not in list(map(lambda x: x["image"], userdata)):
@@ -268,15 +272,15 @@ def app_getImageTags():
 def app_getStats():
     # region Request validation
 
-    username = request.args.get("user")
-    if username is None:
+    discord_id = request.args.get("user")
+    if discord_id is None:
         return jsonify({"error": "No user provided"}), 400
-    if username not in RaterNN.usernames:
+    if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
 
     # endregion
 
-    stats = dbf.get_dataset_stats(username)
+    stats = dbf.get_dataset_stats(discord_id)
     if current_training != "None":
         trainerstats = current_training.get_status()
         stats["trainer"] = trainerstats
@@ -285,12 +289,13 @@ def app_getStats():
 
     return jsonify(stats), 200
 
-
+# TODO: Implement this using the database
 @app.route("/verifyfulldataset", methods=["GET"])
 def app_verifyDatasets():
     valid = Tdata.verify_full_dataset()
     return jsonify({"valid": valid}), 200
 
+# TODO: Implement this using the database
 @app.route("/createfulldataset", methods=["GET"])
 def app_createFullDataset():
     valid = Tdata.verify_full_dataset()
@@ -303,6 +308,7 @@ def app_createFullDataset():
     Tdata.save_dataset("rater/dataset.json")
     return jsonify({"success": True}), 200
 
+# TODO: Implement this using the database
 @app.route("/updatetags", methods=["GET"])
 def app_updateTags():
     Tdata.update_tags(tagger=TaggerNN)
@@ -310,6 +316,7 @@ def app_updateTags():
     return jsonify({"success": True}), 200
 
 
+# TODO: Implement this using the database
 @app.route("/trainuser", methods=["GET"])
 def app_trainUser():
     # region Request validation
@@ -341,6 +348,7 @@ def app_trainUser():
 
     return jsonify({"success": True}), 200
 
+# TODO: Implement this using the database
 @app.route("/trainall", methods=["GET"])
 def app_trainAll():
     global current_training
@@ -370,6 +378,7 @@ def app_trainAll():
 
     return jsonify({"success": True}), 200
 
+# TODO: Implement this using the database
 @app.route("/stoptraining", methods=["GET"])
 def app_stopTraining():
     global current_training
@@ -379,7 +388,7 @@ def app_stopTraining():
         current_training.stop_training()
         return jsonify({"success": True}), 200
 
-
+# TODO: Implement this using the database
 @app.route("/trainerstatus", methods=["GET"])
 def app_trainerStatus():
     if current_training == "None":
@@ -387,6 +396,7 @@ def app_trainerStatus():
     else:
         return jsonify({"status": current_training.get_status()}), 200
 
+# TODO: remove this
 @app.route("/removeduplicates", methods=["GET"])
 def app_removeDuplicates():
     Tdata.remove_duplicates()
@@ -400,13 +410,6 @@ def main():
     from modules.utils import get_val_transforms
 
     current_training = "None"
-
-    # Tdata = RTData(dataset_json="rater/dataset.json", transform=get_val_transforms())
-    # if Tdata.update_needed:
-    #     print("Updating tags...", flush=True, end="")
-    #     Tdata.update_tags(tagger=TaggerNN)
-    #     Tdata.save_dataset("rater/dataset.json")
-    #     print("Done!", flush=True)
 
     CORS(app)
     app.run(host="0.0.0.0", port=2444)

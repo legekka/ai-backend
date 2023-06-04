@@ -29,6 +29,7 @@ class Tag(BaseModel):
 class User(BaseModel):
     id = BigAutoField(primary_key=True)
     username = CharField(max_length=45, unique=True)
+    discord_id = BigIntegerField(unique=True) 
 
     class Meta:
         database = db
