@@ -1,5 +1,25 @@
 from modules.db_model import *
 
+def _get_order_by_param(sort):
+    # this is a helper function for get_userdata and get_userdata_filtered
+    match sort:
+        case "date-asc":
+            order_by_param = Image.id
+        case "date-desc":
+            order_by_param = Image.id.desc()
+        case "rating-asc":
+            order_by_param = Rating.rating
+        case "rating-desc":
+            order_by_param = Rating.rating.desc()
+        case "filename-asc":
+            order_by_param = Image.filename
+        case "filename-desc":
+            order_by_param = Image.filename.desc()
+        case _:
+            order_by_param = Image.id.desc()
+
+    return order_by_param
+
 def get_users():
     usernames = (User
         .select(User.username)
@@ -12,14 +32,15 @@ def get_users():
     
     return formatted_usernames
 
-def get_userdata(username):
+def get_userdata(username, sort=None):
+
     ratings = (Rating
         .select(Image.filename, Rating.rating, Image.id)
         .join(Image)
         .switch(Rating)
         .join(User)
         .where(User.username == username)
-        .order_by(Image.id)
+        .order_by(_get_order_by_param(sort))
         .dicts()
         )
     
@@ -33,7 +54,7 @@ def get_userdata(username):
     
     return formatted_ratings
 
-def get_userdata_filtered(username, filters):
+def get_userdata_filtered(username, filters, sort=None):
     # this is similar to get_userdata, but also connects the images to the tags table, to check whether the tags in the filters dict are present in the image tags
     # Connections:
     #  Rating-->Image
@@ -53,7 +74,7 @@ def get_userdata_filtered(username, filters):
         # we have to check if the count of the tags is equal to the count of the filters, because if we don't, we'll get images that have at least one of the tags, not all of them
         .group_by(Image.filename, Rating.rating, Image.id)
         .having(fn.COUNT(Tag.name) == len(filters))
-        .order_by(Image.id)
+        .order_by(_get_order_by_param(sort)) 
         .dicts()
         )
     

@@ -162,13 +162,17 @@ def app_getUserData():
 
     # endregion
 
+    sort = request.args.get("sort")
+    if sort is None:
+        sort = "date-desc"
+
     filters = request.args.get("filters")
     if filters is None:
-        userdata = dbf.get_userdata(username)
+        userdata = dbf.get_userdata(username, sort)
     else:
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
-        userdata = dbf.get_userdata_filtered(username, filters)
+        userdata = dbf.get_userdata_filtered(username, filters, sort)
     page = request.args.get("page")
     limit = request.args.get("limit")
     if page is not None:
@@ -201,13 +205,17 @@ def app_getImageNeighbours():
     
     # endregion
 
+    sort = request.args.get("sort")
+    if sort is None:
+        sort = "date-desc"
+
     filters = request.args.get("filters")
     if filters is None:
-        userdata = dbf.get_userdata(username)
+        userdata = dbf.get_userdata(username, sort)
     else:
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
-        userdata = dbf.get_userdata_filtered(username, filters)
+        userdata = dbf.get_userdata_filtered(username, filters, sort)
 
     # find index of filename image in userdata
     if filename not in list(map(lambda x: x["image"], userdata)):
