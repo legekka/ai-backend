@@ -437,9 +437,63 @@ def update_rating(filename, discord_id, rating_value):
 
         return True
 
-def add_rating(filename, discord_id, rating_value):
-    # TODO: implement
-    pass
+def add_rating(imageobject, discord_id, rating_value):
+    # first of all, we have to check the image.filename in the database
+
+    image = (Image
+        .select()
+        .where(Image.filename == imageobject.filename)
+        .dicts()
+        )
+    
+    if len(image) != 0:
+        # if the image exists, we won't add it
+        return False
+
+    # preparing the image for database storage
+
+    from modules.utils import convert_to_image_512_t, convert_to_image_768, align_rating
+    import base64
+
+    image_512_t = convert_to_image_512_t(imageobject).read()
+    image_768 = convert_to_image_768(imageobject).read()
+
+    image_512_t = base64.b64encode(image_512_t).decode("utf-8")
+    image_768 = base64.b64encode(image_768).decode("utf-8")
+
+    filename = imageobject.filename
+
+    # now we can add the image to the database
+    try:
+        Image.create(filename=filename, image_512_t=image_512_t, image_768=image_768)
+    except Exception as e:
+        print("Error adding image to database: " + str(e))
+        return False
+    
+    # and now we will add the rating. We will get the image_id and user_id tho
+    image_id = (Image
+        .select(Image.id)
+        .where(Image.filename == filename)
+        .dicts()
+        )[0]["id"]
+    
+    user_id = (User
+        .select(User.id)
+        .where(User.discord_id == discord_id)
+        .dicts()
+        )[0]["id"]
+    
+    try:
+        Rating.create(image_id=image_id, user_id=user_id, rating=align_rating(rating_value))
+    except Exception as e:
+        print("Error adding rating to database: " + str(e))
+        return False
+    
+    # extra step: we have to generate the tags for the image
+    # but that will be the API's job
+    # we just return True here
+
+    return True
 
 def remove_rating(filename, discord_id):
     # this simply removes all ratings for a given image and user
@@ -472,6 +526,38 @@ def remove_rating(filename, discord_id):
     (Rating
         .delete()
         .where(Rating.image_id == image_id, Rating.user_id == user_id)
+        .execute()
+        )
+    
+    return True
+
+def delete_image(filename):
+    image_id = (Image
+        .select(Image.id)
+        .where(Image.filename == filename)
+        .dicts()
+        )
+    
+    if len(image_id) == 0:
+        return False
+    else: 
+        image_id = image_id[0]["id"]
+
+    (Rating
+        .delete()
+        .where(Rating.image_id == image_id)
+        .execute()
+        )
+    
+    (ImageTag
+        .delete()
+        .where(ImageTag.image_id == image_id)
+        .execute()
+        )
+    
+    (Image
+        .delete()
+        .where(Image.id == image_id)
         .execute()
         )
     

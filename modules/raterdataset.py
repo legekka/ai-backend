@@ -149,9 +149,9 @@ class RPDataset(torch.utils.data.Dataset):
         else:
             self.data.append({"image": image.filename, "rating": rating})
             if not found:
-                from modules.utils import process_image_for_dataset
+                from modules.utils import convert_to_image_512_t
 
-                image512 = process_image_for_dataset(image)
+                image512 = convert_to_image_512_t(image)
                 image512.save(os.path.join(self.imagefolder, image.filename))
 
             self.dataset_hash = self.generate_hash()
@@ -400,9 +400,9 @@ class RTData:
 
         item = self.usersets[user_index].add_image_rating(image, rating, found)
         if not found:
-            from modules.utils import process_image_for_2x
+            from modules.utils import convert_to_image_768
 
-            image768 = process_image_for_2x(image)
+            image768 = convert_to_image_768(image)
             image768.save(os.path.join(self.imagefolder2x, image.filename))
         return item
 

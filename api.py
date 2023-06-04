@@ -59,7 +59,7 @@ def app_rate():
     # endregion
 
     ratings = RaterNN.rateImage(image)
-    print(ratings)
+
     if user != "all":
         # filter out all ratings except for the user
         ratings = list(filter(lambda x: x[0] == user, ratings))
@@ -90,7 +90,7 @@ def app_rateBulk():
         images = [images]
 
     ratings = RaterNN.rateImageBatch(images)
-    print(ratings)
+
     if user != "all":
         # filter out all ratings except for the user for each image
         for i in range(len(ratings)):
@@ -106,22 +106,47 @@ def app_rateBulk():
 
 @app.route("/addrating", methods=["POST"])
 def app_addRating():
+
     # region Request validation
 
     image = request.files.get("image")
+
     if image is None:
         return jsonify({"error": "No image provided"}), 400
     try:
-        discord_id = int(request.args.get("user"))
+        discord_id = int(request.form.get("user"))
     except:
         return jsonify({"error": "Invalid user"}), 400
     if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
 
+    rating = request.form.get("rating")
+    if rating is None:
+        return jsonify({"error": "No rating provided"}), 400
+    
+    rating = float(rating)
+
+    if rating < 0 or rating > 1:
+        return jsonify({"error": "Invalid rating"}), 400
+    
     # endregion
 
-    rating = float(request.form.get("rating"))
-    # TODO: implement adding ratings to database
+    success = dbf.add_rating(image, discord_id, rating)
+    
+    if not success:
+        return jsonify({"error": "Filename already in the database"}), 400
+    print("rating added")
+
+    # we need to update tags in the database, because the new image doesn't have any tags yet
+    global TaggerNN
+    from modules.utils import update_tags
+    print("updating tags")
+    updated_images_count = update_tags(taggernn=TaggerNN)
+    print("updated tags")
+
+    if updated_images_count < 1:
+        print("Failed to update tags")
+        return jsonify({"error": "Failed to update tags"}), 500
 
     return jsonify({"success": True}), 200
 
@@ -177,8 +202,25 @@ def app_removeRating():
     
     return jsonify({"success": True}), 200
 
+@app.route("/deleteimage", methods=["GET"])
+def app_deleteImage():
+    # region Request validation
+
+    filename = request.args.get("filename")
+    if filename is None:
+        return jsonify({"error": "No image provided"}), 400
+
+    # endregion
+
+    success = dbf.delete_image(filename)
+    if not success:
+        return jsonify({"error": "Image not found"}), 400
+    
+    return jsonify({"success": True}), 200
+
 @app.route("/getuserdata", methods=["GET"])
 def app_getUserData():
+
     # region Request validation
 
     try:

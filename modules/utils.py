@@ -1,8 +1,10 @@
 import torch
 import numpy as np
 from PIL import Image
+from io import BytesIO
 from torchvision import transforms
 from modules.models import RaterNN, EfficientNetV2S, RaterNNP
+
 
 from modules.config import Config
 
@@ -115,7 +117,7 @@ def load_models(device=None):
     T11_rater = EfficientNetV2S(classes=Config.T11["tags"], device=device)
     T11_rater = load_checkpoint(
         T11_rater,
-        os.path.join("models", Config.T11["checkpoint_path"]),
+        os.path.join("models", Config.rater["T11_checkpoint_path"]),
         device=device,
     )
     T11_rater.eval()
@@ -133,9 +135,11 @@ def load_models(device=None):
     return T11, rater
 
 
-def process_image_for_dataset(image):
-    if image.mode != "RGB":
-        image = Image.open(image).convert("RGB")
+def convert_to_image_512_t(imageobject):
+    if not hasattr(imageobject, "mode"):
+        image = Image.open(imageobject).convert("RGB")
+    elif imageobject.mode != "RGB":
+        image = Image.open(imageobject).convert("RGB")
     width, height = image.size
     aspect_ratio = width / height
 
@@ -152,12 +156,18 @@ def process_image_for_dataset(image):
         (int((512 - new_width) / 2), int((512 - new_height) / 2)),
     )
 
-    return image_512
+    output = BytesIO()
+    image_512.save(output, format="JPEG")
+    output.seek(0)
+
+    return output
 
 
-def process_image_for_2x(image):
-    if image.mode != "RGB":
-        image = Image.open(image).convert("RGB")
+def convert_to_image_768(imageobject):
+    if not hasattr(imageobject, "mode"):
+        image = Image.open(imageobject).convert("RGB")
+    elif imageobject.mode != "RGB":
+        image = Image.open(imageobject).convert("RGB")
     width, height = image.size
     aspect_ratio = width / height
 
@@ -170,7 +180,11 @@ def process_image_for_2x(image):
 
     image_768 = image.resize((new_width, new_height))
 
-    return image_768
+    output = BytesIO()
+    image_768.save(output, format="JPEG")
+    output.seek(0)
+
+    return output
 
 
 def align_rating(rating):
