@@ -188,19 +188,25 @@ def app_getUserData():
     if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
 
-    # endregion
-
+    rated = request.args.get("rated")
+    if rated is None:
+        rated = "yes"
+    elif rated not in ["yes", "no", "all"]:
+        return jsonify({"error": "Invalid rated parameter"}), 400
+    
     sort = request.args.get("sort")
     if sort is None:
         sort = "date-desc"
 
     filters = request.args.get("filters")
-    if filters is None:
-        userdata = dbf.get_userdata(discord_id, sort)
-    else:
+    if filters is not None:
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
-        userdata = dbf.get_userdata_filtered(discord_id, filters, sort)
+
+    # endregion
+
+    userdata = dbf.get_data(discord_id, rated, sort, filters)
+        
     page = request.args.get("page")
     limit = request.args.get("limit")
     if page is not None:
@@ -232,19 +238,24 @@ def app_getImageNeighbours():
     if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
     
-    # endregion
-
+    rated = request.args.get("rated")
+    if rated is None:
+        rated = "yes"
+    elif rated not in ["yes", "no", "all"]:
+        return jsonify({"error": "Invalid rated parameter"}), 400
+    
     sort = request.args.get("sort")
     if sort is None:
         sort = "date-desc"
 
     filters = request.args.get("filters")
-    if filters is None:
-        userdata = dbf.get_userdata(discord_id, sort)
-    else:
+    if filters is not None:
         filters = filters.split(",")
         filters = list(map(lambda x: x.strip(), filters))
-        userdata = dbf.get_userdata_filtered(discord_id, filters, sort)
+
+    # endregion
+    
+    userdata = dbf.get_data(discord_id, rated, sort, filters)
 
     # find index of filename image in userdata
     if filename not in list(map(lambda x: x["image"], userdata)):

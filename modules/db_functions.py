@@ -93,6 +93,169 @@ def get_userdata_filtered(discord_id, filters, sort=None):
     
     return formatted_ratings
 
+def get_data(discord_id, rated, sort=None, filters=None):
+    user_id = (User
+        .select(User.id)
+        .where(User.discord_id == discord_id)
+        .dicts()
+        )[0]["id"]
+    
+    
+    # depending on datatype, it gives back images that the user has rated, or images that the user has not rated
+    if rated == "yes":
+        # if rated, then we will just use get_userdata or get_userdata_filtered
+        if filters == None:
+            return get_userdata(discord_id, sort)
+        else:
+            return get_userdata_filtered(discord_id, filters, sort)
+    elif rated == "no":
+        # if unrated, then we will get all images, and then filter out the ones that the user has rated
+        # first we need to get the user_id
+        if sort in ["rating-asc", "rating-desc"]:
+            sort = "date-desc"
+
+        if filters == None:
+            images = (Image
+                .select(Image.filename, Image.id)
+                .join(Rating, JOIN.LEFT_OUTER)
+                .where(Rating.user_id != user_id)
+                .group_by(Image.filename, Image.id)
+                .order_by(_get_order_by_param(sort))
+                .dicts()
+                )
+        else:
+            images = (Image
+                .select(Image.filename, Image.id)
+                .join(Rating, JOIN.LEFT_OUTER)
+                .switch(Image)
+                .join(ImageTag)
+                .switch(ImageTag)
+                .join(Tag)
+                .where(Rating.user_id != user_id, Tag.name.in_(filters))
+                .group_by(Image.filename, Image.id)
+                .having(fn.COUNT(Tag.name) == len(filters))
+                .order_by(_get_order_by_param(sort))
+                .dicts()
+                )
+
+        formatted_images = []
+        for image in images:
+            formatted_images.append({
+                "image": image["filename"],
+                "rating": float(-1)
+            })
+        
+        return formatted_images
+    elif rated == "all":
+        if filters == None:
+            # this is a bit tricky, we need to make one query, because it would be too slow otherwise
+            # so the approach is, we will the images, connected to the ratings, and we will try to group them by the image id, but keeping the user rating.
+            # then we will check the user_ids in the ratings, and if it's not the user_id, we will set the rating to -1
+
+            images_rated = (Image
+                .select(Image.filename, Rating.rating, Image.id)
+                .join(Rating, JOIN.LEFT_OUTER)
+                .where(Rating.user_id == user_id)
+                .dicts()
+                )
+
+            # this is how using the ORM the query above would look like
+            images_not_rated = (Image
+                .select(Image.filename, Image.id)
+                .join(Rating, JOIN.LEFT_OUTER)
+                .where(Image.filename.not_in(
+                    Image
+                    .select(Image.filename)
+                    .join(Rating, JOIN.LEFT_OUTER)
+                    .where(Rating.user_id == user_id)
+                    .group_by(Image.filename)
+                    )
+                )
+                .group_by(Image.filename, Image.id)
+                .dicts()
+                )       
+        else:
+            # this is now the same as above but with filters
+            images_rated = (Image
+                .select(Image.filename, Rating.rating, Image.id)
+                .join(Rating, JOIN.LEFT_OUTER)
+                .switch(Image)
+                .join(ImageTag)
+                .switch(ImageTag)
+                .join(Tag)
+                .where(Rating.user_id == user_id, Tag.name.in_(filters))
+                .group_by(Image.filename, Rating.rating, Image.id)
+                .having(fn.COUNT(Tag.name) == len(filters))
+                .dicts()
+                )
+            
+            images_not_rated = (Image
+                .select(Image.filename, Image.id)
+                .join(Rating, JOIN.LEFT_OUTER)
+                .switch(Image)
+                .join(ImageTag)
+                .switch(ImageTag)
+                .join(Tag)
+                .where(Image.filename.not_in(
+                    Image
+                    .select(Image.filename)
+                    .join(Rating, JOIN.LEFT_OUTER)
+                    .where(Rating.user_id == user_id)
+                    .group_by(Image.filename)
+                    )
+                )
+                .where(Tag.name.in_(filters))
+                .group_by(Image.filename, Image.id)
+                .having(fn.COUNT(Tag.name) == len(filters))
+                .dicts()
+                )
+            
+        formatted_images_rated = []
+        for image in images_rated:
+            formatted_images_rated.append({
+                "id": image["id"],
+                "image": image["filename"],
+                "rating": float(image["rating"])
+            })
+        
+        formatted_images_not_rated = []
+        for image in images_not_rated:
+            formatted_images_not_rated.append({
+                "id": image["id"],
+                "image": image["filename"],
+                "rating": float(-1)
+            })
+
+        formatted_images = formatted_images_rated + formatted_images_not_rated
+
+        match sort:
+            case "date-asc":
+                formatted_images.sort(key=lambda x: x["id"])
+            case "date-desc":
+                formatted_images.sort(key=lambda x: x["id"], reverse=True)
+            case "rating-asc":
+                formatted_images.sort(key=lambda x: x["rating"])
+            case "rating-desc":
+                formatted_images.sort(key=lambda x: x["rating"], reverse=True)
+            case "filename-asc":
+                formatted_images.sort(key=lambda x: x["image"])
+            case "filename-desc":
+                formatted_images.sort(key=lambda x: x["image"], reverse=True)
+            case _:
+                formatted_images.sort(key=lambda x: x["id"])
+        
+        # remove id from formatted_images
+        for image in formatted_images:
+            del image["id"]
+
+        return formatted_images
+            
+
+
+
+       
+
+
 def get_image(filename):
     # this just gets the image data from the database
     imagefile = (Image
