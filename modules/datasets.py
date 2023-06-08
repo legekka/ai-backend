@@ -4,110 +4,10 @@ import os
 
 from modules.models import EfficientNetV2S
 
-# example data in dataset.json:
-# dataset.data[0] = {
-#    "image": "0001.jpg",
-#    "ratings": [0, 0.2, ..., 1]
-# }
-# dataset.usernames contains the list of usernames
-
-
-class RaterDataset(torch.utils.data.Dataset):
-    # used for training the rater model
-    def __init__(self, dataset_json, imagefolder, transform=None):
-        self.data, self.usernames = self.load_dataset(dataset_json)
-        self.imagefolder = imagefolder
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        image = Image.open(
-            os.path.join(self.imagefolder, self.data[idx]["image"])
-        ).convert("RGB")
-        if self.transform:
-            image = self.transform(image)
-        ratings = torch.tensor(self.data[idx]["ratings"])
-        return image, ratings
-
-    # used for managing the dataset
-    def load_dataset(self, path):
-        import json
-
-        with open(path) as f:
-            dataset = json.load(f)
-        return dataset["data"], dataset["usernames"]
-
-    def save_dataset(self, path):
-        import json
-
-        with open(path, "w") as f:
-            json.dump({"data": self.data, "usernames": self.usernames}, f, indent=4)
-
-    def get_user_data(self, username):
-        # returns each image and its ratings for the given user
-        index = self.usernames.index(username)
-        ratings = list(map(lambda x: x["ratings"][index], self.data))
-        # add image names to each rating
-        ratings = list(
-            map(lambda x, y: ({"image": x["image"], "rating": y}), self.data, ratings)
-        )
-        return ratings
-
-    # add/update rating (+ add image)
-    def add_rating(self, image, user_and_rating, RaterNN):
-        # user_and_rating is a simple object with like this:
-        # {
-        #    "username": "legekka",
-        #    "rating": 0.5
-        # }
-
-        # user check should be done in api level,
-        index = self.usernames.index(user_and_rating["username"])
-
-        # we have to check if the image is already in the dataset
-        # check if image.filename is in self.data[]["image"]
-        if image.filename in list(map(lambda x: x["image"], self.data)):
-            # image is already in the dataset we just update the rating
-            image_index = list(map(lambda x: x["image"], self.data)).index(
-                image.filename
-            )
-            self.data[image_index]["ratings"][index] = user_and_rating["rating"]
-        else:
-            # if image is not in the dataset, we will not just simply add it,
-            # but generate ratings by RaterNN itself for all users,
-            # then update the rating with the human data
-
-            ratings = RaterNN.rateImage(image)
-
-            ratings = list(map(lambda x: x[1], ratings))
-
-            self.data.append({"image": image.filename, "ratings": ratings})
-
-            image_index = len(self.data) - 1
-            self.data[image_index]["ratings"][index] = user_and_rating["rating"]
-
-            # save image to imagefolder
-            # image.save(os.path.join(self.imagefolder, image.filename))
-
-        return self.data[image_index]
-
-    # get images by filenames
-    def get_image(self, filename):
-        # check if images is in the dataset
-        if filename not in list(map(lambda x: x["image"], self.data)):
-            return None
-        else:
-            with open(os.path.join(self.imagefolder, filename), "rb") as f:
-                return f.read()
-
-
 # single user's dataset
 class RPDataset(torch.utils.data.Dataset):
-    def __init__(self, data, imagefolder, username, transform=None):
+    def __init__(self, data, username, transform=None):
         self.data = data
-        self.imagefolder = imagefolder
         self.username = username
         self.transform = transform
         self.dataset_hash = self.generate_hash()
@@ -116,18 +16,19 @@ class RPDataset(torch.utils.data.Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        image = Image.open(
-            os.path.join(self.imagefolder, self.data[idx]["image"])
-        ).convert("RGB")
+        import base64
+        import io
+
+        image = base64.b64decode(self.data[idx]["image"])
+        fileobject = io.BytesIO(image)
+
+        image = Image.open(fileobject).convert("RGB")
         if self.transform:
             image = self.transform(image)
+            
         rating = torch.tensor(float(self.data[idx]["rating"]))
-        # dont forget that [batch] shape is deprecated, use [batch, 1]
         rating = rating.unsqueeze(0)
         return image, rating
-
-    def toList(self):
-        return self.data
 
     def generate_hash(self):
         import hashlib
@@ -138,65 +39,6 @@ class RPDataset(torch.utils.data.Dataset):
         import json
 
         return hashlib.sha256(json.dumps(imageandratings).encode()).hexdigest()
-
-    def add_image_rating(self, image, rating, found=False):
-        if image.filename in list(map(lambda x: x["image"], self.data)):
-            index = list(map(lambda x: x["image"], self.data)).index(image.filename)
-            self.data[index]["rating"] = rating
-
-            self.dataset_hash = self.generate_hash()
-            return self.data[index]
-        else:
-            self.data.append({"image": image.filename, "rating": rating})
-            if not found:
-                from modules.utils import convert_to_image_512_t
-
-                image512 = convert_to_image_512_t(image)
-                image512.save(os.path.join(self.imagefolder, image.filename))
-
-            self.dataset_hash = self.generate_hash()
-            return self.data[-1]
-
-    def update_rating(self, image, rating):
-        i = 0
-        while i < len(self.data) and self.data[i]["image"] != image:
-            i += 1
-        if i < len(self.data):
-            self.data[i]["rating"] = rating
-
-            self.dataset_hash = self.generate_hash()
-            return self.data[i]
-        else:
-            return None
-
-    # get statistics of the user's ratings
-    def get_stats(self, username):
-        from modules.utils import checkpoint_dataset_hash
-
-        # the categories are the following: 0, 0.16, 0.33, 0.5, 0.67, 0.84, 1 (roughly)
-        summary = [0, 0, 0, 0, 0, 0, 0]
-        for i in range(len(self.data)):
-            rating = round(self.data[i]["rating"] * 6)
-            summary[int(rating)] += 1
-        # get models/RaterNNP_<username>.pth modification date
-        import os
-        import time
-
-        RaterNNP_date = os.path.getmtime("models/RaterNNP_" + username + ".pth")
-        RaterNNP_hash = checkpoint_dataset_hash("models/RaterNNP_" + username + ".pth")
-        RaterNN_date = os.path.getmtime("models/RaterNN.pth")
-
-        RaterNNP_up_to_date = RaterNNP_hash == self.dataset_hash
-
-        RaterNN_up_to_date = RaterNN_date > RaterNNP_date
-
-        stats = {
-            "image_count": len(self.data),
-            "rating_distribution": summary,
-            "RaterNNP_up_to_date": RaterNNP_up_to_date,
-            "RaterNN_up_to_date": RaterNN_up_to_date,
-        }
-        return stats
 
 
 # this is the full dataset for RaterNN based on the RPDatasets

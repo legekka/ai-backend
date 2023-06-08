@@ -2,7 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import torch
 from modules.utils import load_models, checkpoint_dataset_hash
-from modules.raterdataset import RTData
+from modules.datasets import RTData
 import modules.db_functions as dbf
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -399,14 +399,14 @@ def app_updateTags():
     return jsonify({"updated_images_count": updated_images_count}), 200
 
 
-# TODO: Implement this using the database
 @app.route("/trainuser", methods=["GET"])
 def app_trainUser():
     # region Request validation
-    username = request.args.get("user")
-    if username is None:
-        return jsonify({"error": "No user provided"}), 400
-    if username not in RaterNN.usernames:
+    try:
+        discord_id = int(request.args.get("user"))
+    except:
+        return jsonify({"error": "Invalid user"}), 400
+    if discord_id not in dbf.get_discord_ids():
         return jsonify({"error": "Invalid user"}), 400
 
     # endregion
@@ -417,8 +417,9 @@ def app_trainUser():
         return jsonify({"error": "Already training"}), 400
 
     # region Check if model is already trained
-    modelhash = checkpoint_dataset_hash("models/RaterNNP_" + username + ".pth")
-    dataset_hash = dbf.generate_dataset_hash(username)
+    modelhash = checkpoint_dataset_hash(f"models/RaterNNP_{discord_id}.pth")
+    dataset = dbf.create_RPDataset(discord_id)
+    dataset_hash = dataset.generate_hash()
 
     if modelhash == dataset_hash:
         return jsonify({"error": "Model already trained"}), 400
@@ -426,7 +427,7 @@ def app_trainUser():
 
     from modules.training import PTrainer
 
-    current_training = PTrainer(username=username, tdata=Tdata)
+    current_training = PTrainer(dataset=dataset)
     current_training.start_training()
 
     return jsonify({"success": True}), 200
@@ -471,7 +472,6 @@ def app_stopTraining():
         current_training.stop_training()
         return jsonify({"success": True}), 200
 
-# TODO: Implement this using the database
 @app.route("/trainerstatus", methods=["GET"])
 def app_trainerStatus():
     if current_training == "None":

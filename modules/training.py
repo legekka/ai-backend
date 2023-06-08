@@ -8,18 +8,17 @@ from torch.utils.data import DataLoader
 import tqdm
 from modules.models import *
 from modules.utils import *
-from modules.raterdataset import *
+from modules.datasets import *
 
 
 class PTrainer:
-    def __init__(self, username, tdata=None):
+    def __init__(self, dataset):
         from modules.utils import load_models
 
-        self.username = username
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.hparams = self.load_hparams()
-        self.T11 = load_models(device=self.device)
-        self.Tdata = self.load_dataset() if tdata is None else tdata
+        self.T11 = load_models(device=self.device)[0]
+        self.dataset = dataset
         self.rater = self.create_rater()
         self.train_loader = self.create_train_loader()
         self.optimizer = self.create_optimizer()
@@ -34,24 +33,17 @@ class PTrainer:
             hparams = json.load(f)
         return hparams
 
-    def load_dataset(self):
-        # TODO: This needs some rework because of the database
-        Tdata = RTData(
-            dataset_json=self.hparams["dataset_json"], transform=get_val_transforms()
-        )
-        return Tdata
-
     def create_rater(self):
         rater = RaterNNP(
-            self.T11,
-            username=self.username,
+            effnet=self.T11,
+            username=self.dataset.username,
             device=self.device,
         )
         return rater
 
     def create_train_loader(self):
         train_loader = DataLoader(
-            self.Tdata.get_userdataset(self.username),
+            self.dataset,
             batch_size=self.hparams["batch_size"],
             shuffle=True,
             num_workers=self.hparams["num_workers"],
@@ -116,9 +108,9 @@ class PTrainer:
         checkpoint_dict = {
             "effnet_checkpoint": os.path.join("models", Config.T11["checkpoint_path"]),
             "model": self.rater.rater.state_dict(),
-            "dataset_hash": self.Tdata.get_userdataset(self.username).dataset_hash,
+            "dataset_hash": self.dataset.generate_hash(),
         }
-        checkpoint_name = f'{self.hparams["name"]}_{self.username}.pth'
+        checkpoint_name = f'{self.hparams["name"]}_{self.dataset.username}.pth'
         torch.save(checkpoint_dict, os.path.join("models", checkpoint_name))
         print("Done!")
 
@@ -148,7 +140,7 @@ class PTrainer:
 
     def get_status(self):
         status = {
-            "current_user": self.username,
+            "current_user": self.dataset.username,
             "is_training": self.is_training(),
             "progress": f"{self.progress*100:.2f}%",
         }
@@ -156,13 +148,13 @@ class PTrainer:
 
 
 class Trainer:
-    def __init__(self, tdata=None):
+    def __init__(self, dataset):
         from modules.utils import load_models
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.hparams = self.load_hparams()
         self.T11 = load_models
-        self.Tdata = self.load_dataset() if tdata is None else tdata
+        self.dataset = dataset
         self.rater = self.create_rater()
         self.train_loader = self.create_train_loader()
         self.optimizer = self.create_optimizer()
@@ -176,12 +168,6 @@ class Trainer:
         with open("rater/hparams.json") as f:
             hparams = json.load(f)
         return hparams
-
-    def load_dataset(self):
-        Tdata = RTData(
-            dataset_json=self.hparams["dataset_json"], transform=get_val_transforms()
-        )
-        return Tdata
 
     def create_rater(self):
         from modules.config import Config

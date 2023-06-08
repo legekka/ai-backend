@@ -117,7 +117,7 @@ def load_models(device=None):
     T11_rater = EfficientNetV2S(classes=Config.T11["tags"], device=device)
     T11_rater = load_checkpoint(
         T11_rater,
-        os.path.join("models", Config.rater["T11_checkpoint_path"]),
+        os.path.join("models", Config.T11["checkpoint_path"]),
         device=device,
     )
     T11_rater.eval()
@@ -195,18 +195,21 @@ def raternn_up_to_date(discord_ids):
     import modules.db_functions as dbf
     
     raternn_date = os.path.getmtime("models/RaterNN.pth")
-
+    valid = True
     for discord_id in discord_ids:
         model_hash = checkpoint_dataset_hash(os.path.join("models", f"RaterNNP_{str(discord_id)}.pth"))
-        dataset_hash = dbf.generate_dataset_hash(discord_id)
+        dataset_hash = dbf.create_RPDataset(discord_id).generate_hash()
         if model_hash != dataset_hash:
-            return False
-        
+            valid = False
+            break
+
         raternnp_date = os.path.getmtime(os.path.join("models", f"RaterNNP_{str(discord_id)}.pth"))
         if raternnp_date > raternn_date:
-            return False
-    
-    return True
+            valid = False
+            break
+
+
+    return valid
 
 
 # this function updates the images which are missing tags. If full is true, it will update all images
