@@ -1,4 +1,3 @@
 *.pyc
 models/*
-*.sh
 config.json
