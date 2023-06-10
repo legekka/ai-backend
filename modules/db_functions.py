@@ -42,44 +42,35 @@ def get_usernames():
     return formatted_usernames
 
 
-def get_userdata(discord_id, sort=None):
-    ratings = (
-        Rating.select(Image.filename, Rating.rating, Image.id)
-        .join(Image)
-        .switch(Rating)
-        .join(User)
-        .where(User.discord_id == discord_id)
-        .order_by(_get_order_by_param(sort))
-        .dicts()
-    )
-
-    formatted_ratings = []
-
-    for rating in ratings:
-        formatted_ratings.append(
-            {"image": rating["filename"], "rating": float(rating["rating"])}
+def get_userdata(discord_id, filters=None, sort=None):
+    # check if filters are None
+    if filters == None:
+        ratings = (
+            Rating.select(Image.filename, Rating.rating, Image.id)
+            .join(Image)
+            .switch(Rating)
+            .join(User)
+            .where(User.discord_id == discord_id)
+            .order_by(_get_order_by_param(sort))
+            .dicts()
         )
-
-    return formatted_ratings
-
-
-def get_userdata_filtered(discord_id, filters, sort=None):
-    # this is similar to get_userdata, but also connects the images to the tags table, to check whether the tags in the filters dict are present in the image tags
-    ratings = (
-        Rating.select(Image.filename, Rating.rating, Image.id)
-        .join(Image)
-        .switch(Rating)
-        .join(User)
-        .switch(Image)
-        .join(ImageTag)
-        .switch(ImageTag)
-        .join(Tag)
-        .where(User.discord_id == discord_id, Tag.name.in_(filters))
-        .group_by(Image.filename, Rating.rating, Image.id)
-        .having(fn.COUNT(Tag.name) == len(filters))
-        .order_by(_get_order_by_param(sort))
-        .dicts()
-    )
+    else:
+        # this is similar to get_userdata, but also connects the images to the tags table, to check whether the tags in the filters dict are present in the image tags
+        ratings = (
+            Rating.select(Image.filename, Rating.rating, Image.id)
+            .join(Image)
+            .switch(Rating)
+            .join(User)
+            .switch(Image)
+            .join(ImageTag)
+            .switch(ImageTag)
+            .join(Tag)
+            .where(User.discord_id == discord_id, Tag.name.in_(filters))
+            .group_by(Image.filename, Rating.rating, Image.id)
+            .having(fn.COUNT(Tag.name) == len(filters))
+            .order_by(_get_order_by_param(sort))
+            .dicts()
+        )
 
     formatted_ratings = []
     for rating in ratings:
@@ -97,11 +88,7 @@ def get_data(discord_id, rated, sort=None, filters=None):
 
     # depending on datatype, it gives back images that the user has rated, or images that the user has not rated
     if rated == "yes":
-        # if rated, then we will just use get_userdata or get_userdata_filtered
-        if filters == None:
-            return get_userdata(discord_id, sort)
-        else:
-            return get_userdata_filtered(discord_id, filters, sort)
+        return get_userdata(discord_id=discord_id, filters=filters, sort=sort)
     elif rated == "no":
         # if unrated, then we will get all images, and then filter out the ones that the user has rated
         # first we need to get the user_id
@@ -112,7 +99,13 @@ def get_data(discord_id, rated, sort=None, filters=None):
             images = (
                 Image.select(Image.filename, Image.id)
                 .join(Rating, JOIN.LEFT_OUTER)
-                .where(Rating.user_id != user_id)
+                .where(
+                    Image.id.not_in(
+                        Image.select(Image.id)
+                        .join(Rating, JOIN.LEFT_OUTER)
+                        .where(Rating.user_id == user_id)
+                    )
+                )
                 .group_by(Image.filename, Image.id)
                 .order_by(_get_order_by_param(sort))
                 .dicts()
@@ -125,7 +118,14 @@ def get_data(discord_id, rated, sort=None, filters=None):
                 .join(ImageTag)
                 .switch(ImageTag)
                 .join(Tag)
-                .where(Rating.user_id != user_id, Tag.name.in_(filters))
+                .where(
+                    Image.id.not_in(
+                        Image.select(Image.id)
+                        .join(Rating, JOIN.LEFT_OUTER)
+                        .where(Rating.user_id == user_id)
+                    ),
+                    Tag.name.in_(filters),
+                )
                 .group_by(Image.filename, Image.id)
                 .having(fn.COUNT(Tag.name) == len(filters))
                 .order_by(_get_order_by_param(sort))
@@ -261,6 +261,7 @@ def get_image(filename):
 
     return fileobject
 
+
 def get_thumbnail_image(filename):
     # this just gets the image data from the database
     imagefile = (
@@ -279,6 +280,7 @@ def get_thumbnail_image(filename):
     fileobject.seek(0)
 
     return fileobject
+
 
 def get_images(filenames, mode="768"):
     # this gets multiple images from the database
@@ -443,7 +445,12 @@ def add_rating(imageobject, discord_id, rating_value):
 
     # preparing the image for database storage
 
-    from modules.utils import convert_to_image_512_t, convert_to_image_768, convert_to_image_305, align_rating
+    from modules.utils import (
+        convert_to_image_512_t,
+        convert_to_image_768,
+        convert_to_image_305,
+        align_rating,
+    )
     import base64
 
     image_512_t = convert_to_image_512_t(imageobject).read()
@@ -458,7 +465,12 @@ def add_rating(imageobject, discord_id, rating_value):
 
     # now we can add the image to the database
     try:
-        Image.create(filename=filename, image_512_t=image_512_t, image_768=image_768, image_305=image_305)
+        Image.create(
+            filename=filename,
+            image_512_t=image_512_t,
+            image_768=image_768,
+            image_305=image_305,
+        )
     except Exception as e:
         print("Error adding image to database: " + str(e))
         return False
