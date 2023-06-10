@@ -111,27 +111,37 @@ def get_data(discord_id, rated, sort=None, filters=None):
                 .dicts()
             )
         else:
-            images = (
-                Image.select(Image.filename, Image.id)
-                .join(Rating, JOIN.LEFT_OUTER)
-                .switch(Image)
-                .join(ImageTag)
-                .switch(ImageTag)
-                .join(Tag)
-                .where(
-                    Image.id.not_in(
-                        Image.select(Image.id)
-                        .join(Rating, JOIN.LEFT_OUTER)
-                        .where(Rating.user_id == user_id)
-                    ),
-                    Tag.name.in_(filters),
-                )
-                .group_by(Image.filename, Image.id)
-                .having(fn.COUNT(Tag.name) == len(filters))
-                .order_by(_get_order_by_param(sort))
-                .dicts()
-            )
+            from peewee import RawQuery
 
+            tags_string = "('" + "', '".join(filters) + "')"
+
+            query = f"""
+            SELECT t1.id, t1.filename FROM (
+                SELECT image.id, image.filename
+                FROM image
+                LEFT OUTER JOIN rating ON image.id = rating.image_id
+                WHERE image.id NOT IN (
+                    SELECT image.id
+                    FROM image
+                    LEFT OUTER JOIN rating ON image.id = rating.image_id
+                    WHERE rating.user_id = {user_id}
+                    )
+                GROUP BY image.filename, image.id
+                ORDER BY image.id ASC
+                ) as t1
+            LEFT OUTER JOIN image_tag ON t1.id = image_tag.image_id
+            LEFT OUTER JOIN tag ON image_tag.tag_id = tag.id
+            WHERE tag.name in {tags_string}
+            GROUP BY t1.id, t1.filename
+            HAVING COUNT(tag.name) = {len(filters)}
+            ORDER BY t1.id ASC
+            """
+            result = db.execute_sql(query)
+
+            images = []
+            for row in result:
+                images.append({"filename": row[1], "id": row[0]})
+            
         formatted_images = []
         for image in images:
             formatted_images.append({"image": image["filename"], "rating": float(-1)})
@@ -155,14 +165,14 @@ def get_data(discord_id, rated, sort=None, filters=None):
                 Image.select(Image.filename, Image.id)
                 .join(Rating, JOIN.LEFT_OUTER)
                 .where(
-                    Image.filename.not_in(
-                        Image.select(Image.filename)
+                    Image.id.not_in(
+                        Image.select(Image.id)
                         .join(Rating, JOIN.LEFT_OUTER)
                         .where(Rating.user_id == user_id)
-                        .group_by(Image.filename)
                     )
                 )
                 .group_by(Image.filename, Image.id)
+                .order_by(_get_order_by_param(sort))
                 .dicts()
             )
         else:
@@ -180,26 +190,36 @@ def get_data(discord_id, rated, sort=None, filters=None):
                 .dicts()
             )
 
-            images_not_rated = (
-                Image.select(Image.filename, Image.id)
-                .join(Rating, JOIN.LEFT_OUTER)
-                .switch(Image)
-                .join(ImageTag)
-                .switch(ImageTag)
-                .join(Tag)
-                .where(
-                    Image.filename.not_in(
-                        Image.select(Image.filename)
-                        .join(Rating, JOIN.LEFT_OUTER)
-                        .where(Rating.user_id == user_id)
-                        .group_by(Image.filename)
+            from peewee import RawQuery
+
+            tags_string = "('" + "', '".join(filters) + "')"
+
+            query = f"""
+            SELECT t1.id, t1.filename FROM (
+                SELECT image.id, image.filename
+                FROM image
+                LEFT OUTER JOIN rating ON image.id = rating.image_id
+                WHERE image.id NOT IN (
+                    SELECT image.id
+                    FROM image
+                    LEFT OUTER JOIN rating ON image.id = rating.image_id
+                    WHERE rating.user_id = {user_id}
                     )
-                )
-                .where(Tag.name.in_(filters))
-                .group_by(Image.filename, Image.id)
-                .having(fn.COUNT(Tag.name) == len(filters))
-                .dicts()
-            )
+                GROUP BY image.filename, image.id
+                ORDER BY image.id ASC
+                ) as t1
+            LEFT OUTER JOIN image_tag ON t1.id = image_tag.image_id
+            LEFT OUTER JOIN tag ON image_tag.tag_id = tag.id
+            WHERE tag.name in {tags_string}
+            GROUP BY t1.id, t1.filename
+            HAVING COUNT(tag.name) = {len(filters)}
+            ORDER BY t1.id ASC
+            """
+            result = db.execute_sql(query)
+
+            images_not_rated = []
+            for row in result:
+                images_not_rated.append({"filename": row[1], "id": row[0]})
 
         formatted_images_rated = []
         for image in images_rated:
