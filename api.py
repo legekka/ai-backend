@@ -343,7 +343,7 @@ def app_getThumbnail():
     imagefile = dbf.get_thumbnail_image(filename)
     if imagefile is None:
         return jsonify({"error": "Image not found"}), 400
-    response = app.response_class(response=imagefile.read(), status=200, mimetype="image/jpeg")
+    response = app.response_class(response=imagefile.read(), status=200, mimetype="image/webp")
     return response
 
 @app.route("/getimagetags", methods=["GET"])

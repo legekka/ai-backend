@@ -191,20 +191,28 @@ def convert_to_image_305(imageobject):
         image = Image.open(imageobject).convert("RGB")
     elif imageobject.mode != "RGB":
         image = Image.open(imageobject).convert("RGB")
-    width, height = image.size
-    aspect_ratio = width / height
 
-    if aspect_ratio > 1:
+    aspect_ratio = image.width / image.height
+    if image.width < image.height:
         new_width = 305
-        new_height = int(new_width / aspect_ratio)
+        new_height = int(305 / aspect_ratio)
     else:
+        new_width = int(305 * aspect_ratio)
         new_height = 305
-        new_width = int(new_height * aspect_ratio)
 
     image_305 = image.resize((new_width, new_height))
 
+    # now we need to crop the image to 305 x 305
+    # we will crop the center of the image
+    left = int((new_width - 305) / 2)
+    top = int((new_height - 305) / 2)
+    right = int((new_width + 305) / 2)
+    bottom = int((new_height + 305) / 2)
+
+    image_305 = image_305.crop((left, top, right, bottom))
+
     output = BytesIO()
-    image_305.save(output, format="JPEG")
+    image_305.save(output, format="WEBP")
     output.seek(0)
 
     return output
