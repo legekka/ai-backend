@@ -261,6 +261,24 @@ def get_image(filename):
 
     return fileobject
 
+def get_thumbnail_image(filename):
+    # this just gets the image data from the database
+    imagefile = (
+        Image.select(Image.image_305).where(Image.filename == filename).dicts()
+    )[0]["image_305"]
+
+    if imagefile == None:
+        return None
+
+    import io
+    import base64
+
+    imagefile = base64.b64decode(imagefile)
+    fileobject = io.BytesIO()
+    fileobject.write(imagefile)
+    fileobject.seek(0)
+
+    return fileobject
 
 def get_images(filenames, mode="768"):
     # this gets multiple images from the database
@@ -425,20 +443,22 @@ def add_rating(imageobject, discord_id, rating_value):
 
     # preparing the image for database storage
 
-    from modules.utils import convert_to_image_512_t, convert_to_image_768, align_rating
+    from modules.utils import convert_to_image_512_t, convert_to_image_768, convert_to_image_305, align_rating
     import base64
 
     image_512_t = convert_to_image_512_t(imageobject).read()
     image_768 = convert_to_image_768(imageobject).read()
+    image_305 = convert_to_image_305(imageobject).read()
 
     image_512_t = base64.b64encode(image_512_t).decode("utf-8")
     image_768 = base64.b64encode(image_768).decode("utf-8")
+    image_305 = base64.b64encode(image_305).decode("utf-8")
 
     filename = imageobject.filename
 
     # now we can add the image to the database
     try:
-        Image.create(filename=filename, image_512_t=image_512_t, image_768=image_768)
+        Image.create(filename=filename, image_512_t=image_512_t, image_768=image_768, image_305=image_305)
     except Exception as e:
         print("Error adding image to database: " + str(e))
         return False

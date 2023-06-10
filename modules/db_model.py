@@ -13,6 +13,7 @@ class Image(BaseModel):
     filename = CharField(max_length=256, unique=True)
     image_512_t = TextField()
     image_768 = TextField()
+    image_305 = TextField()
 
     class Meta:
         database = db

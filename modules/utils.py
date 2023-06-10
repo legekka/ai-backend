@@ -186,6 +186,28 @@ def convert_to_image_768(imageobject):
 
     return output
 
+def convert_to_image_305(imageobject):
+    if not hasattr(imageobject, "mode"):
+        image = Image.open(imageobject).convert("RGB")
+    elif imageobject.mode != "RGB":
+        image = Image.open(imageobject).convert("RGB")
+    width, height = image.size
+    aspect_ratio = width / height
+
+    if aspect_ratio > 1:
+        new_width = 305
+        new_height = int(new_width / aspect_ratio)
+    else:
+        new_height = 305
+        new_width = int(new_height * aspect_ratio)
+
+    image_305 = image.resize((new_width, new_height))
+
+    output = BytesIO()
+    image_305.save(output, format="JPEG")
+    output.seek(0)
+
+    return output
 
 def align_rating(rating):
     return round(round(rating * 6) / 6, 2)

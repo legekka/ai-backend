@@ -330,6 +330,21 @@ def app_getImage():
     response = app.response_class(response=imagefile.read(), status=200, mimetype="image/jpeg")
     return response
 
+@app.route("/getthumbnail", methods=["GET"])
+def app_getThumbnail():
+    # region Request validation
+
+    filename = request.args.get("filename")
+    if filename is None:
+        return jsonify({"error": "No image filename provided"}), 400
+
+    # endregion
+
+    imagefile = dbf.get_thumbnail_image(filename)
+    if imagefile is None:
+        return jsonify({"error": "Image not found"}), 400
+    response = app.response_class(response=imagefile.read(), status=200, mimetype="image/jpeg")
+    return response
 
 @app.route("/getimagetags", methods=["GET"])
 def app_getImageTags():
@@ -483,6 +498,10 @@ def main():
     global TaggerNN, RaterNN, Tdata, current_training
 
     TaggerNN, RaterNN = load_models(device=device)
+
+    # clean cuda cache
+    torch.cuda.empty_cache()
+
     from modules.utils import get_val_transforms
 
     current_training = "None"
