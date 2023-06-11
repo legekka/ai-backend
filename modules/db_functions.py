@@ -41,6 +41,15 @@ def get_usernames():
 
     return formatted_usernames
 
+def get_tags():
+    tags = Tag.select(Tag.name).dicts()
+
+    formatted_tags = []
+    for tag in tags:
+        formatted_tags.append(tag["name"])
+
+    return formatted_tags
+
 
 def get_userdata(discord_id, filters=None, sort=None):
     # check if filters are None

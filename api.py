@@ -383,6 +383,12 @@ def app_getStats():
 
     return jsonify(stats), 200
 
+@app.route("/gettags", methods=["GET"])
+def app_getTags():
+    tags = dbf.get_tags()
+    return jsonify({"tags": tags}), 200
+
+
 # TODO: Implement this using the database
 @app.route("/verifyfulldataset", methods=["GET"])
 def app_verifyDatasets():
