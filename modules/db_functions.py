@@ -271,11 +271,17 @@ def get_data(discord_id, rated, sort=None, filters=None):
         return formatted_images
 
 
-def get_image(filename):
+def get_image(filename, mode="768"):
     # this just gets the image data from the database
-    imagefile = (
-        Image.select(Image.image_768).where(Image.filename == filename).dicts()
-    )[0]["image_768"]
+
+    if mode == "768":
+        imagefile = (
+            Image.select(Image.image_768).where(Image.filename == filename).dicts()
+        )[0]["image_768"]
+    else:
+        imagefile = (
+            Image.select(Image.image_512_t).where(Image.filename == filename).dicts()
+        )[0]["image_512_t"]
 
     if imagefile == None:
         return None
@@ -462,14 +468,13 @@ def update_rating(filename, discord_id, rating_value):
 
         return True
 
-
-def add_rating(imageobject, discord_id, rating_value):
+def add_image(imageobject, sankaku_id=None):
     # first of all, we have to check the image.filename in the database
 
     image = Image.select().where(Image.filename == imageobject.filename).dicts()
 
     if len(image) != 0:
-        # if the image exists, we won't add it
+        # if the image exists, we won't add it yet
         return False
 
     # preparing the image for database storage
@@ -477,8 +482,7 @@ def add_rating(imageobject, discord_id, rating_value):
     from modules.utils import (
         convert_to_image_512_t,
         convert_to_image_768,
-        convert_to_image_305,
-        align_rating,
+        convert_to_image_305
     )
     import base64
 
@@ -494,16 +498,28 @@ def add_rating(imageobject, discord_id, rating_value):
 
     # now we can add the image to the database
     try:
-        Image.create(
+        image = Image.create(
             filename=filename,
             image_512_t=image_512_t,
             image_768=image_768,
             image_305=image_305,
+            sankaku_id=sankaku_id if sankaku_id != None else None,
         )
     except Exception as e:
         print("Error adding image to database: " + str(e))
         return False
+    
+    # return the filename
+    return image.filename
 
+def add_rating(imageobject, discord_id, rating_value):
+    
+    # we try to add the image to the database
+    filename = add_image(imageobject)
+    if filename == False:
+        print("Failed to add rating, image already exists")
+        return False
+    
     # and now we will add the rating. We will get the image_id and user_id tho
     image_id = (Image.select(Image.id).where(Image.filename == filename).dicts())[0][
         "id"
@@ -512,6 +528,8 @@ def add_rating(imageobject, discord_id, rating_value):
     user_id = (User.select(User.id).where(User.discord_id == discord_id).dicts())[0][
         "id"
     ]
+
+    from modules.utils import align_rating
 
     try:
         Rating.create(
@@ -628,3 +646,112 @@ def create_RPDataset(discord_id):
     )
 
     return dataset
+
+
+# These following functions are for the Montagepost feature
+
+# this function constructs a complete montagepost from the database with the images, and tags for each image
+def get_montagepost(montagepost_id, filters=None):
+    # just a quick check if the montagepost exists
+    montagepost = (
+        Montagepost.select().where(Montagepost.id == montagepost_id).dicts()
+    )
+    if len(montagepost) == 0:
+        print("Montagepost does not exist")
+        return False
+
+    # first we need to get the images
+    images = (
+        Image.select(Image.id, Image.filename, Image.sankaku_id, Image.image_768)
+        .join(MontagepostImage)
+        .switch(MontagepostImage)
+        .join(Montagepost)
+        .where(Montagepost.id == montagepost_id)
+        .order_by(Image.id)
+        .dicts()
+    )
+
+    import io
+    import base64
+    from modules.utils import get_image_metadata
+
+    formatted_images = []
+    for image in images:
+        # we also need to get the tags for each image
+        tags = get_image_tags(image["filename"])
+
+        if filters != None:
+            # if filters are given, we need to check if the tags contains all the filter tags
+            if not all(elem in tags for elem in filters):
+                # if not, we will skip this image
+                continue
+        
+        imagefile = base64.b64decode(image["image_768"])
+        fileobject = io.BytesIO()
+        fileobject.write(imagefile)
+        fileobject.seek(0)
+
+
+        formatted_image = {
+            "image_id": image["id"],
+            "filename": image["filename"],
+            "meta": get_image_metadata(fileobject),
+            "sankaku_id": image["sankaku_id"],
+            "tags": tags,
+        }
+        formatted_images.append(formatted_image)
+    
+    montagepost = {
+        "id": montagepost_id,
+        "images": formatted_images,
+        "created_at": montagepost[0]["created_at"]
+    }
+
+    return montagepost
+
+# this function gets montageposts for a given user, sorted by date
+def get_montageposts(discord_id, filters=None, sort=None):
+    # first we need to get the user_id
+    user_id = (User.select(User.id).where(User.discord_id == discord_id).dicts())[0][
+        "id"
+    ]
+
+    # then we can get the montagepost ids
+    montagepost_ids = (
+        Montagepost.select(Montagepost.id)
+        .join(User)
+        .where(User.id == user_id)
+        .order_by(Montagepost.created_at.desc())
+        .dicts()
+    )
+
+    formatted_montageposts = []
+    for montagepost_id in montagepost_ids:
+        montagepost = get_montagepost(montagepost_id["id"])
+        formatted_montageposts.append(montagepost)
+
+    return formatted_montageposts
+
+# this function creates the montageposts from the already added images
+def create_montagepost(filenames, discord_id):
+    # first we need to get the user_id
+    user_id = (User.select(User.id).where(User.discord_id == discord_id).dicts())[0][
+        "id"
+    ]
+
+    # then we create the montagepost
+    montagepost = Montagepost.create(user_id=user_id)
+
+    # then we need to get the image_ids
+    image_ids = (
+        Image.select(Image.id).where(Image.filename.in_(filenames)).order_by(Image.id)
+    )
+
+    # and then we can create the montagepost_images connections
+    for image_id in image_ids:
+        MontagepostImage.create(
+            montagepost_id=montagepost.id, image_id=image_id.id
+        )
+
+    # when we are done, we return the montagepost.id
+    return montagepost.id

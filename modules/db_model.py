@@ -15,6 +15,8 @@ class Image(BaseModel):
     image_768 = TextField()
     image_305 = TextField()
 
+    sankaku_id = BigIntegerField(null=True) # Sankaku post ID, this is part of the TODO training database implementation, also used for MontagepostImages optionally
+
     class Meta:
         database = db
         table_name = 'image'
@@ -54,3 +56,21 @@ class Rating(BaseModel):
     class Meta:
         database = db
         table_name = 'rating'
+
+class Montagepost(BaseModel):
+    id = BigAutoField(primary_key=True)
+    user_id = ForeignKeyField(User, backref='user_montageposts')
+    created_at = DateTimeField()
+
+    class Meta:
+        database = db
+        table_name = 'montagepost'
+
+class MontagepostImage(BaseModel):
+    id = BigAutoField(primary_key=True)
+    montagepost_id = ForeignKeyField(Montagepost, backref='montagepost_images')
+    image_id = ForeignKeyField(Image, backref='image_montageposts')
+
+    class Meta:
+        database = db
+        table_name = 'montagepost_image'

@@ -322,13 +322,34 @@ def app_getImage():
     if filename is None:
         return jsonify({"error": "No image filename provided"}), 400
 
+    mode = request.args.get("mode")
+    if mode is None:
+        mode = "768"
+
     # endregion
 
-    imagefile = dbf.get_image(filename)
+    imagefile = dbf.get_image(filename, mode)
     if imagefile is None:
         return jsonify({"error": "Image not found"}), 400
     response = app.response_class(response=imagefile.read(), status=200, mimetype="image/jpeg")
     return response
+
+@app.route("/addimage", methods=["POST"])
+def app_addImage():
+    # region Request validation
+
+    image = request.files.get("image")
+    if image is None:
+        return jsonify({"error": "No image provided"}), 400
+
+    sankaku_id = request.form.get("sankaku_id")
+    # endregion
+
+    filename = dbf.add_image(image, sankaku_id if sankaku_id is not None else None)
+    if not filename:
+        return jsonify({"error": "Filename already in the database"}), 400
+    
+    return jsonify({"success": True, "filename": filename}), 200
 
 @app.route("/getthumbnail", methods=["GET"])
 def app_getThumbnail():
@@ -388,6 +409,122 @@ def app_getTags():
     tags = dbf.get_tags()
     return jsonify({"tags": tags}), 200
 
+# Montageposts
+
+@app.route("/getmontageposts", methods=["GET"])
+def app_getMontageposts():
+    # region Request validation
+
+    try:
+        discord_id = int(request.args.get("user"))
+    except:
+        return jsonify({"error": "Invalid user"}), 400
+    if discord_id not in dbf.get_discord_ids():
+        return jsonify({"error": "Invalid user"}), 400
+    
+    filters = request.args.get("filters")
+    if filters is not None:
+        filters = filters.split(",")
+        filters = list(map(lambda x: x.strip(), filters))
+
+    # endregion
+
+    montageposts = dbf.get_montageposts(discord_id, filters)
+
+    page = request.args.get("page")
+    limit = request.args.get("limit")
+    if page is not None:
+        page = int(page) - 1
+        if limit is None:
+            limit = 15
+        else:
+            limit = int(limit)
+        max_page = len(montageposts) // limit + 1
+        montageposts = montageposts[page * limit : (page + 1) * limit]
+
+    if page is None:
+        return jsonify({"montageposts": montageposts}), 200
+    else:
+        return jsonify({"montageposts": montageposts, "max_page": max_page}), 200
+
+@app.route("/getmontagepostneighbours", methods=["GET"])
+def app_getMontagepostNeighbours():
+    # region Request validation
+
+    montagepost_id = request.args.get("id")
+    if montagepost_id is None:
+        return jsonify({"error": "No montagepost ID provided"}), 400
+    try:
+        montagepost_id = int(montagepost_id)
+    except:
+        return jsonify({"error": "Invalid montagepost ID"}), 400
+
+    try:
+        discord_id = int(request.args.get("user"))
+    except:
+        return jsonify({"error": "Invalid user"}), 400
+    if discord_id not in dbf.get_discord_ids():
+        return jsonify({"error": "Invalid user"}), 400
+    
+    filters = request.args.get("filters")
+    if filters is not None:
+        filters = filters.split(",")
+        filters = list(map(lambda x: x.strip(), filters))
+
+    # endregion
+
+    montageposts = dbf.get_montageposts(discord_id, filters)
+
+    # find index of filename image in userdata
+    if montagepost_id not in list(map(lambda x: x["id"], montageposts)):
+        return jsonify({"error": "Montagepost not found"}), 400
+
+    index = list(map(lambda x: x["id"], montageposts)).index(montagepost_id)
+
+    response = {
+        "position": index + 1,
+        "max_montagepost": len(montageposts),
+        "next_montagepost": {"id": montageposts[index + 1]["id"] if index < len(montageposts) - 1 else None, "created_at": montageposts[index + 1]["created_at"] if index < len(montageposts) - 1 else None },
+        "prev_montagepost": {"id": montageposts[index - 1]["id"] if index > 0 else None, "created_at": montageposts[index - 1]["created_at"] if index > 0 else None },
+    }
+
+    return jsonify(response), 200
+
+@app.route("/getmontagepost", methods=["GET"])
+def app_getMontagepost():
+    # region Request validation
+
+    try:
+        montagepost_id = int(request.args.get("id"))
+    except:
+        return jsonify({"error": "Invalid montagepost ID"}), 400
+
+    # endregion
+
+    montagepost = dbf.get_montagepost(montagepost_id)
+    return jsonify({"montagepost": montagepost}), 200
+
+@app.route("/createmontagepost", methods=["POST"])
+def app_createMontagepost():
+    # region Request validation
+
+    try:
+        discord_id = int(request.form.get("user"))
+    except:
+        return jsonify({"error": "Invalid user"}), 400
+    
+    if discord_id not in dbf.get_discord_ids():
+        return jsonify({"error": "Invalid user"}), 400
+   
+    filenames = request.form.get("filenames").split(",")
+    if filenames is None:
+        return jsonify({"error": "No filenames provided"}), 400
+    # endregion
+
+    montagepost_id = dbf.create_montagepost(filenames=filenames, discord_id=discord_id)
+    return jsonify({"montagepost_id": montagepost_id}), 200
+
+# Dataset
 
 # TODO: Implement this using the database
 @app.route("/verifyfulldataset", methods=["GET"])
@@ -417,8 +554,14 @@ def app_updateTags():
     global TaggerNN
     from modules.utils import update_tags
     updated_images_count = update_tags(taggernn=TaggerNN, full=full)
+
+    # clean cuda cache
+    torch.cuda.empty_cache()
+
     return jsonify({"updated_images_count": updated_images_count}), 200
 
+
+# Training
 
 @app.route("/trainuser", methods=["GET"])
 def app_trainUser():

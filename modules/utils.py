@@ -134,6 +134,20 @@ def load_models(device=None):
 
     return T11, rater
 
+def get_image_metadata(imageobject):
+    if not hasattr(imageobject, "mode"):
+        image = Image.open(imageobject).convert("RGB")
+    elif imageobject.mode != "RGB":
+        image = Image.open(imageobject).convert("RGB")
+    width, height = image.size
+    aspect_ratio = width / height
+
+    return {
+        "width": width,
+        "height": height,
+        "aspect_ratio": aspect_ratio,
+    }
+
 
 def convert_to_image_512_t(imageobject):
     if not hasattr(imageobject, "mode"):
@@ -255,8 +269,8 @@ def update_tags(taggernn : EfficientNetV2S, full=False):
     if len(images) == 0:
         return 0
     
-    # create batches of 32 images
-    batch_size = 32
+    # create batches of 2 images
+    batch_size = 2
     batches = [images[i:i + batch_size] for i in range(0, len(images), batch_size)]
     result_batches = []
     import tqdm
